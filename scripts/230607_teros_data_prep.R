@@ -9,25 +9,17 @@
 
 # 1. Setup ---------------------------------------------------------------------
 
-## Load packages
-require(pacman)
-p_load(tidyverse, 
-       rdrop2, 
-       cowplot, 
-       lubridate, 
-       parsedate, # parse_date()
-       janitor, # clean_names()
-       purrr) # map()
-
-## Set ggplot theme
-theme_set(theme_bw())
+## First, load setup script to set up environment
+source("scripts/0_setup.R")
 
 
 # 2. Pull in data and format ---------------------------------------------------
 
-teros_path <- "/Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Current_data"
+teros_path_current <- "/Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Current_data"
+teros_path_archive <- "/Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Loggernet_Rawdata_Archive"
 
-teros_list <- list.files(teros_path, "Terosdata_5")
+teros_list <- c(list.files(teros_path_archive, "Terosdata_5", full.names = T)[grepl("202306", list.files(teros_path_archive, "Terosdata_5"))], 
+  list.files(teros_path_current, "Terosdata_5", full.names = T))
 
 ## Also need the table to match plot and grid to channel and logger
 teros_table <- read_csv("/Users/regi350/Downloads/TEROS_Network_Location copy.csv") %>% 
@@ -37,7 +29,7 @@ teros_table <- read_csv("/Users/regi350/Downloads/TEROS_Network_Location copy.cs
 
 
 read_teros <- function(filename){
-  read_delim(file = paste0(teros_path, "/", filename), skip = 1) %>% 
+  read_delim(file = filename, skip = 1) %>% 
     slice(3:n()) %>% 
     clean_names() %>% 
     gather(channel, value, -timestamp, -record, -statname) %>%
@@ -74,27 +66,59 @@ teros_all <- inner_join(teros_raw, teros_table %>% select(data_logger_id, terosd
   unique()
 
 
-# 3. Trim and calculate data ---------------------------------------------------
+# 3. Trim and summarize data ---------------------------------------------------
 
 start_date = "2023-06-01"
-end_date = "2023-06-10"
 
 teros_trim <- teros_all %>% 
-  filter(datetime >= start_date & 
-           datetime <= end_date) 
-
-
-# 4. QC data -------------------------------------------------------------------
-
-check_datasets <- function(var){
-  ggplot(teros_trim, aes(datetime, {{var}}, color = interaction(depth, grid_square))) + 
-    geom_line() + 
-    facet_wrap(~plot, ncol = 1, scales = "free_y")
-}
-
-check_datasets(vwc)
+  filter(datetime >= start_date)
 
 
 
+teros_means <- teros_trim %>% 
+  filter(vwc > 0) %>% 
+  group_by(datetime, depth, plot) %>% 
+  summarize(vwc = median_(vwc), 
+            tsoil = median_(tsoil), 
+            ec = median_(ec)) %>% 
+  drop_na()
 
-#write_csv(df_cor, "data/teros_data.csv")
+
+ggplot(teros_means, aes(datetime, depth)) + 
+  geom_contour_filled(aes(z = tsoil)) + 
+  scale_y_reverse() + 
+  geom_vline(aes(xintercept = dump_start1), color = "white", linetype = "dashed") + 
+  geom_vline(aes(xintercept = dump_start2), color = "white", linetype = "dashed") + 
+  facet_wrap(~plot, ncol = 1) + 
+  labs(x = "", y = "Depth (cm)", fill = "Temp (C)")
+ggsave("figures/230609_teros_temp_contours.png", width = 9, height = 8) 
+
+
+ggplot(teros_means, aes(datetime, depth)) + 
+  geom_contour_filled(aes(z = ec)) + 
+  scale_y_reverse() + 
+  geom_vline(aes(xintercept = dump_start1), color = "white", linetype = "dashed") + 
+  geom_vline(aes(xintercept = dump_start2), color = "white", linetype = "dashed") + 
+  facet_wrap(~plot, ncol = 1) + 
+  labs(x = "", y = "Depth (cm)", fill = "EC (uS/cm)")
+ggsave("figures/230609_teros_ec_contours.png", width = 9, height = 8) 
+
+
+ggplot(teros_means, aes(datetime, depth)) + 
+  geom_contour_filled(aes(z = vwc)) + 
+  scale_y_reverse() + 
+  geom_vline(aes(xintercept = dump_start1), color = "white", linetype = "dashed") + 
+  geom_vline(aes(xintercept = dump_start2), color = "white", linetype = "dashed") + 
+  facet_wrap(~plot, ncol = 1) + 
+  labs(x = "", y = "Depth (cm)", fill = "VWC (m3/m3)")
+ggsave("figures/230609_teros_vwc_contours.png", width = 9, height = 8) 
+
+
+
+write_csv(teros_trim, "data/230610_teros.csv")
+
+
+
+
+
+
