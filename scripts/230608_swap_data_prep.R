@@ -1,6 +1,10 @@
-## This script imports redox sensor data
+## This script imports redox sensor data, which is stored on the SERC Dropbox 
+## under .../TEMPEST_PNNL_Data/Current_data". Because this is a finite time-period, 
+## and data aren't going to change, I'm going to pull static copies so it's
+## 1) easier to put on github/etc, 2) not going to change, and 3) pipe won't break
+## if dropbox comms drop
 ##
-## 2023-06-06
+## 2023-06-06 (updated 6/28/23)
 ## Peter Regier
 ## 
 # ########### #
@@ -8,6 +12,8 @@
 
 
 # 1. Setup ---------------------------------------------------------------------
+
+source("scripts/0_setup.R")
 
 ## Load packages
 require(pacman)
@@ -39,12 +45,11 @@ read_swap <- function(path){
 }
 
 
-swap_path <- "/Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Current_data"
-swap_list <- list.files(swap_path, "Redox", full.names = T)
+swap_list <- list.files(path = "data/swap", pattern = ".dat", full.names = "T")
 
 control <- read_swap(swap_list[grepl("81", swap_list)]) %>% 
   mutate(plot = "Control")
-fw <- read_swap("data/redox_sensors/CR1000_2_Table1.dat") %>% 
+fw <- read_swap("data/swap/CR1000_2_Table1.dat") %>% 
   mutate(plot = "FW")
 sw <- read_swap(swap_list[grepl("83", swap_list)]) %>% 
   mutate(plot = "SW")
@@ -61,40 +66,30 @@ set_depths <- function(data){
     select(-c(statname, scrap, timestamp))
 }
 
-df <- bind_rows(set_depths(control), 
+df_raw <- bind_rows(set_depths(control), 
                 set_depths(fw), 
                 set_depths(sw)) %>% 
-  filter(datetime > "2023-06-06")
+  filter(datetime > pre_event_start & 
+           datetime < post_event_end)
 
-max_datetime <- max(df %>% filter(plot == "FW") %>% pull(datetime))
+# Because FW record starts before Control/SW, trim to match
+sw_start <- min(df_raw %>% filter(plot == "SW") %>% pull(datetime))
 
-df_trim <- df %>% 
-  filter(datetime <= max_datetime)
-
-# ggplot(df, aes(datetime, redox_mv, group = sensor, color = depth_cm)) + 
-#   geom_line() + 
-#   facet_wrap(ref~plot)
-# 
-# p <- ggplot(df %>% filter(plot == "FW" & ref == "ra"), aes(datetime, redox_mv, group = sensor)) + 
-#   geom_line() + 
-#   facet_wrap(~depth_cm)
-# 
-# ggplotly(p)
-
-
-write_csv(df, "data/230609_swap_redox_raw.csv")
-
-dump_start1 = as.POSIXct("2023-06-06 05:00", tz = common_tz)
-dump_start2 = as.POSIXct("2023-06-07 05:00", tz = common_tz)
-
-df_trim %>% 
+## We're also filtering to just the first ref probe based on early issues with rb
+df_final <- df_raw %>% 
   group_by(datetime, depth_cm, ref, plot) %>% 
   summarize(batt_v = mean(batt_v), 
             redox_mv = mean(redox_mv)) %>% 
+  filter(datetime >= sw_start) %>% 
   filter(ref == "ra") %>% 
+  mutate(datetime_raw = as.character(datetime)) %>% 
+  mutate(plot = case_when(plot == "FW" ~ "Freshwater", 
+                          plot == "SW" ~ "Seawater", 
+                          TRUE ~ plot))
+
+df_final %>% 
   ggplot(aes(datetime, depth_cm)) + 
-  #geom_raster(aes(fill = redox_mv)) + 
-  geom_contour_filled(aes(z = redox_mv), bins = 10) + 
+  geom_contour_filled(aes(z = redox_mv), bins = 20) + 
   scale_y_reverse() + 
   geom_vline(aes(xintercept = dump_start1), color = "black", linetype = "dashed") + 
   geom_vline(aes(xintercept = dump_start2), color = "black", linetype = "dashed") + 
@@ -102,8 +97,5 @@ df_trim %>%
   labs(x = "", y = "Depth (cm)", fill = "Redox (mv)")
 ggsave("figures/230609_redox_contours.png", width = 9, height = 8)
 
-
-
-
-
+write_csv(df_final, "data/230618_swap_redox_raw.csv")
 
