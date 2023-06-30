@@ -1,4 +1,14 @@
-## This script brings in TEROS data for the TEMPEST 2 event
+## This script brings in TEROS data for the TEMPEST 2 event. Because there is a 
+## lot of heterogeneity between TEROS nests, we're going to target our dataset to
+## just the nest closest to the DO/redox sensors in each plot. If that fails, we'll
+## broaden the spatial net slightly to include the closest 2-3 nests until we are 
+## confident we have high-quality data representing local soil conditions
+##
+## Instead of pulling off grid-cells, we can use logger numbers to specify which
+## data we want to pull:
+## FW: PNNL_21
+## SW: PNNL_32
+## Control: PNNL_12
 ##
 ## 2023-06-06
 ## Peter Regier
@@ -24,7 +34,13 @@ teros_path_archive <- "/Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Logge
 teros_list_all <- c(list.files(teros_path_archive, "Terosdata", full.names = T)[grepl("202306", list.files(teros_path_archive, "Terosdata"))], 
   list.files(teros_path_current, "Terosdata", full.names = T))
 
-teros_list <- teros_list_all[!grepl("_5min", teros_list_all)]
+## Trim to nearest loggers only, based on
+## https://stackoverflow.com/questions/7597559/grep-using-a-character-vector-with-multiple-patterns
+loggers_to_match <- c("PNNL_21", "PNNL_32", "PNNL_12")
+teros_list_single_loggers <- unique(grep(paste(loggers_to_match, collapse = "|"), 
+                                         teros_list_all, value = TRUE))
+
+teros_list <- teros_list_single_loggers[!grepl("_5min", teros_list_single_loggers)]
 
 ## Also need the table to match plot and grid to channel and logger
 teros_table <- read_csv("/Users/regi350/Downloads/TEROS_Network_Location copy.csv") %>% 
@@ -89,7 +105,11 @@ end_date = post_event_end
 ## Trim data
 teros_trim <- teros_all %>% 
   filter(datetime >= start_date & 
-           datetime <= end_date)
+            datetime <= end_date) 
+    #%>% 
+  # filter(plot == "Control" & grid_square == "C6" | 
+  #          plot == "Freshwater" & grid_square == "F4" |
+  #          plot == "Seawater" & grid_square == "F6")
 
 
 ### 2. Clean non-responsive sensors 
