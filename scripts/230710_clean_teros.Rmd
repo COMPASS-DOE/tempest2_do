@@ -1,0 +1,287 @@
+---
+title: "230710_teros_cleaning"
+author: "PR"
+date: "2023-07-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,
+                      message = F,
+                      warning = F)
+```
+
+### What we're doing
+
+This markdown documents the **journey** of cleaning even a small amount of TEROS data for the TEMPEST 2 flooding events. Initial attemps to clean these data resulted in too many decision points, and thus the need to carefully document and justify how we are deciding to clean these data. Ideally, this will help writing associated methods, and explaining decisions to co-authors.
+
+### First visualization of **all** TEROS data {.tabset}
+
+Looking at all the TEROS data from the time-period of interest, it's clear that there's a lot going on, including non-responsive sensors, high intra-plot variability, and different responses to the flooding events.
+
+```{r Setup}
+## First, load setup script to set up environment
+source("../scripts/0_setup.R")
+
+## Read in data
+teros_5min_raw <- read_csv("../data/230710_teros_raw_5min.csv")
+teros_15min_raw <- read_csv("../data/230710_teros_raw_15min.csv")
+
+```
+
+#### 5-minute data
+
+There are two immediate issues with the 5-minute data: 1) static sensors with high VWC (\> 0.75), and 2) many of the sensors are missing data for some or most of the time-period of interest. This is a bummer, since the 5-minute data temporally matches our DO and redox datasets.
+
+```{r Initial 5-minute plot}
+ggplot(teros_5min_raw, aes(datetime, vwc, color = grid_square)) + 
+  geom_line() + 
+  facet_wrap(plot~depth)
+```
+
+#### 15-minute data
+
+The 15-minute data looks generally better in terms of continuity across the time-frame of interest, but has the same issue with flatlined sensors.
+
+```{r Initial 15-minute plot}
+ggplot(teros_15min_raw, aes(datetime, vwc, color = grid_square)) + 
+  geom_line() + 
+  facet_wrap(plot~depth)
+```
+
+### QC Step 1: remove high-VWC flatlined sensors {.tabset}
+
+First step is the easiest, which is to scrub the high VWC sensors. Conveniently, they're all with values of 0.75, and none of the other sensors are, so we can easily trim those out. While we're at it, let's make plots for the other two variables as well, to see if they need initial cleaning:
+
+#### Volumetric Water Content
+
+```{r remove flatlined sensors}
+
+## Silly, but setting this programmatically in case we want to tweak
+vwc_upper_threshold = 0.75
+
+teros_5min_trim1 <- teros_5min_raw %>% filter(vwc < vwc_upper_threshold)
+teros_15min_trim1 <- teros_15min_raw %>% filter(vwc < vwc_upper_threshold)
+  
+create_plots1 <- function(data_5min, data_15min, var){
+  p0 <- ggplot(data_5min, aes(datetime, {{var}}, color = grid_square)) + 
+    geom_line(show.legend = F) + 
+    facet_wrap(plot~depth) + 
+    ggtitle("5-minute data")
+    
+  
+  p1 <- ggplot(data_15min, aes(datetime, {{var}}, color = grid_square)) + 
+    geom_line(show.legend = F) + 
+    facet_wrap(plot~depth) + 
+    ggtitle("15-minute data")
+    
+  plot_grid(p0, p1, nrow = 1)
+}
+
+create_plots1(teros_5min_trim1, teros_15min_trim1, vwc)
+
+```
+
+#### Electrical Conductivity
+
+```{r}
+create_plots1(teros_5min_trim1, teros_15min_trim1, ec)
+```
+
+#### Soil Temperature
+
+```{r}
+create_plots1(teros_5min_trim1, teros_15min_trim1, tsoil)
+```
+
+### QC Step 2: remove high temp sensor in Seawater {.tabset}
+
+We have one rogue sensor reading really high temperatures \>30, which doesn't make sense and is a clear outlier. Let's also remove that sensor.
+
+```{r remove non-sensical temp sensor}
+
+tsoil_upper_threshold = 25
+
+teros_5min_trim2 <- teros_5min_trim1 %>% filter(tsoil < tsoil_upper_threshold)
+teros_15min_trim2 <- teros_15min_trim1 %>% filter(tsoil < tsoil_upper_threshold)
+
+create_plots1(teros_5min_trim2, teros_15min_trim2, tsoil)
+```
+
+### Decision point: merging 5-minute and 15-minute datasets
+
+There are a couple potential routes here:
+
+1.  Use only 15-minute data: these datasets appear to be complete, and generally clean, though we lose all 5-minute resolution, which means we effectively drop to 15-minute resolution for all datasets when comparing to any TEROS dataset.
+2.  Use only 5-minute data: this is a bad option, because we've got limited coverage.
+3.  Merge datasets, and include all 15-minute data, while filling in with 5-minute data
+4.  Merge datasets, and include all 5-minute data, filling in with 15-minute data
+
+
+**IF** the 15-minute and 5-minute data are comparable, then either 3 or 4 should be used. If they aren't we should used 1. So, let's compare them:
+
+```{r}
+
+inner_join(teros_5min_trim2 %>% rename("vwc_5cm" = vwc) %>% select(datetime, plot, sensor_id, vwc_5cm), 
+           teros_15min_trim2 %>% rename("vwc_15cm" = vwc) %>% select(datetime, plot, sensor_id, vwc_15cm), 
+           by = c("datetime", "plot", "sensor_id")) %>% 
+  ggplot(aes(vwc_5cm, vwc_15cm, color = sensor_id)) + 
+  geom_abline(slope = 1, intercept = 0) + 
+  geom_point() + 
+  facet_wrap(~plot)
+
+```
+
+### Decision {.tabset}
+
+I'm going to go with **#3 above**, because the 15-minute record is complete, so even though the same record for either 5-min or 15-min should be the same, we will keep all 15-minute records where possible (and thus the full time-frame) and fill in 5-min values as available. My main concern is we will now have **unequal sample sizes** for different periods of the same length (i.e. 6/3, with 5-minute data missing, a day will have 4x24=96 values, while 6/9 will have 12*24=288 values). This likely doesn't matter much since we have such high sample-sizes across our datasets, but something to keep in mind. Let's revisualize our newly merged dataset
+
+```{r merge to a single dataset}
+
+teros_raw <- bind_rows(teros_15min_trim2, 
+          teros_5min_trim2) %>% 
+  unique()
+```
+
+#### VWC
+
+```{r}
+
+create_plots2 <- function(var){
+  ggplot(teros_raw, aes(datetime, {{var}})) + 
+  geom_line(aes(color = grid_square), alpha = 0.5) + 
+  geom_smooth(se = F, color = "black") + 
+  facet_wrap(plot~depth, scales = "free")
+}
+
+create_plots2(vwc)
+```
+
+#### EC
+```{r}
+create_plots2(ec)
+```
+
+
+#### Temp
+```{r}
+create_plots2(tsoil)
+```
+
+### Decision point 2: binning (.tabset)
+
+Because we are unable to spatially resolve DO or redox data, since those data are collected at single points within each plot, we now have two choices: 
+
+1. Combine all grid-cells or select TEROS nest nearest each Firesting/SWAP setup
+2. Calculate means or medians
+
+First, let's address the stats, since that might be easier. Medians are likely a good choice here since we have a lot of variability, especially with some individual sensors responding much less than the others (eg look at Temp for FW at 15 and 30 cm). Let's visualize the differences in means and medians using all sensors to make sure that we're choosing wisely: 
+
+```{r bin to mean and medians}
+
+tic("calculate means") ## 416 freaking seconds!
+teros_means <- teros_raw %>% 
+  select(-c(contains("_id"), grid_square)) %>% 
+  group_by(datetime, plot, depth) %>% 
+  summarize(across(where(is.numeric), mean, na.rm = T))
+toc()
+
+tic("calculate medians") ## 426 seconds ?!? woof
+teros_medians <- teros_raw %>% 
+  select(-c(contains("_id"), grid_square)) %>% 
+  group_by(datetime, plot, depth) %>% 
+  summarize(across(where(is.numeric), median, na.rm = T))
+toc()
+```
+
+
+#### VWC
+
+```{r}
+create_plots3 <- function(var){
+    p0 <- ggplot(teros_means, aes(datetime, {{var}}, color = as.factor(depth)))+ 
+    geom_line(show.legend = F) + 
+    facet_wrap(~plot) + 
+    ggtitle("Means")
+    
+  
+  p1 <- ggplot(teros_medians, aes(datetime, {{var}}, color = as.factor(depth))) + 
+    geom_line(show.legend = F) + 
+    facet_wrap(~plot) + 
+    ggtitle("Medians")
+    
+  plot_grid(p0, p1, nrow = 1)
+}
+
+create_plots3(vwc)
+```
+
+Something is very wrong here...Let's zoom in on a chunk or two and see what the data look like up close
+```{r}
+teros_means %>% 
+  filter(plot == "Control" & depth == 5) %>% 
+  filter(datetime > "2023-06-04 00:00" & datetime < "2023-06-04 12:00") %>%
+  ggplot(aes(datetime, vwc)) + geom_line()
+```
+
+This is really weird, but appears to be related to merging the 5-minute data with the 15-minute data. To examine this, let's put the 5-minute and 15-minute data next to each other for a couple hours:
+
+```{r}
+
+create_plots3_5 <- function(data){
+  start = "2023-06-04 00:00"
+  end = "2023-06-04 12:00"
+  
+  ggplot(data %>% filter(plot == "Control"), aes(datetime, vwc, color = sensor_id)) + 
+    geom_line(show.legend = F)
+}
+
+plot_grid(create_plots3_5(teros_5min_trim2) + ggtitle("5-min"), 
+          create_plots3_5(teros_15min_trim2) + ggtitle("15-min"),
+          nrow = 1)
+  
+```
+
+
+
+
+```{r bin 15-minute data}
+
+tic("calculate means") ## 145s
+teros_15min_means <- teros_15min_trim2 %>% 
+  select(-c(contains("_id"), grid_square)) %>% 
+  group_by(datetime, plot, depth) %>% 
+  summarize(across(where(is.numeric), mean, na.rm = T))
+toc()
+
+tic("calculate medians") ## 151s
+teros_15min_medians <- teros_15min_trim2 %>% 
+  select(-c(contains("_id"), grid_square)) %>% 
+  group_by(datetime, plot, depth) %>% 
+  summarize(across(where(is.numeric), median, na.rm = T))
+toc()
+```
+
+
+
+
+```{r}
+create_plots4 <- function(var){
+    p0 <- ggplot(teros_15min_means, aes(datetime, {{var}}, color = as.factor(depth)))+ 
+    geom_line(show.legend = F) + 
+    facet_wrap(~plot) + 
+    ggtitle("Means")
+    
+  
+  p1 <- ggplot(teros_15min_medians, aes(datetime, {{var}}, color = as.factor(depth))) + 
+    geom_line(show.legend = F) + 
+    facet_wrap(~plot) + 
+    ggtitle("Medians")
+    
+  plot_grid(p0, p1, nrow = 1)
+}
+
+create_plots4(vwc)
+```
+
+

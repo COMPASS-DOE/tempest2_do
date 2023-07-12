@@ -88,6 +88,7 @@ df_final <- df_raw %>%
                           TRUE ~ plot))
 
 df_final %>% 
+  filter(datetime > sw_start) %>% 
   ggplot(aes(datetime, depth_cm)) + 
   geom_contour_filled(aes(z = redox_mv), bins = 20) + 
   scale_y_reverse() + 
@@ -98,4 +99,6 @@ df_final %>%
 ggsave("figures/230609_redox_contours.png", width = 9, height = 8)
 
 write_csv(df_final, "data/230618_swap_redox_raw.csv")
+
+
 
