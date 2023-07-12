@@ -263,7 +263,7 @@ toc()
 ```
 
 
-
+Using only 15-minute data, mean VWC time-series look much more sensible, but it is clear from the time-series (especially for Control) that there are still some data artifacts that are unlikely to be environmental phenomena. For instance, short spikes up or down that immediately return to values similar to previous observations, and a binary-style shift to higher values in Control during the middle of the time-period. I suspect these anamolies can be explained by sensors turn off / on, thereby resulting in rapid shifts in values. Let's explore this a little bit. We will make one decision here: comparing means and medians, we see similar general patterns, so the statistic we choose should not dramatically alter the story from the dataset. However, we do see that patterns are relatively "cleaner" for means than medians. **Because our goal here is to represent average conditions, and not the spatial variability, we will use means from here on.**
 
 ```{r}
 create_plots4 <- function(var){
@@ -283,5 +283,131 @@ create_plots4 <- function(var){
 
 create_plots4(vwc)
 ```
+
+Let's trim down to the time-period with the binary shift in the control to see what's going on:
+
+```{r}
+
+control_gap_start = "2023-06-06"
+control_gap_end = "2023-06-08 12:00"
+
+trim_data1 <- function(data){
+  data %>% 
+    filter(plot == "Control") %>% 
+    filter(datetime > control_gap_start & 
+             datetime < control_gap_end)
+}
+
+ggplot(trim_data1(teros_15min_means), aes(datetime, vwc, color = as.factor(depth))) + 
+  geom_line()
+
+```
+
+
+FOUND IT. The issue is sensors that are gapping during this time-period. We should be able to trim this out by counting the number of observations during this period, setting a threshold, scrubbing the sensors that don't meet it, then calculating our metrics.
+
+```{r}
+mean_ <- function(...){mean(..., na.rm = T)}
+
+trim_data1(teros_15min_trim2) %>% 
+  group_by(datetime, plot, depth) %>% 
+  #summarize(vwc = mean_(vwc)) %>% 
+  #ggplot(aes(datetime, vwc, color = as.factor(depth))) + 
+  ggplot(aes(datetime, vwc, color = as.factor(sensor_id))) + 
+  geom_point(alpha = 0.4)
+```
+
+
+Here are the counts for the total time-period, and for the time-period in question (~6/6 - 6/9). Some good news here: it's only Control, and this looks easy to fix. For that time-period, we need to exclude sensors that have less than 200 observations. So let's do that.
+
+```{r}
+
+data_counts1 <- teros_15min_trim2 %>% 
+  group_by(plot, sensor_id) %>% 
+  count() %>% 
+  ggplot(aes(sensor_id, n)) + 
+  geom_col() + 
+  facet_wrap(~plot, ncol = 1) + 
+  ggtitle("Full time-period")
+
+data_counts2 <- teros_15min_trim2 %>% 
+  filter(datetime > control_gap_start & 
+             datetime < control_gap_end) %>%
+  group_by(plot, sensor_id) %>% 
+  count() %>% 
+  ggplot(aes(sensor_id, n)) + 
+  geom_col() + 
+  facet_wrap(~plot, ncol = 1) + 
+  ggtitle("6/6 - 6/9")
+
+plot_grid(data_counts1, data_counts2, nrow = 1)
+
+
+
+```
+
+
+### Decision point: Scrub Control sensors missing data between 6/6 and 6/8 prior to binning as means: {.tabset}
+
+```{r}
+
+sensors_to_scrub <- teros_15min_trim2 %>% 
+  filter(datetime > control_gap_start & 
+             datetime < control_gap_end) %>%
+  group_by(plot, sensor_id) %>% 
+  count() %>% 
+  filter(n < 200)
+
+teros_15min_trim3 <- teros_15min_trim2 %>% 
+  filter(!(sensor_id %in% sensors_to_scrub$sensor_id))
+
+tic("calculate means...again") ##151
+teros_15min_means2 <- teros_15min_trim3 %>% 
+  select(-c(contains("_id"), grid_square)) %>% 
+  group_by(datetime, plot, depth) %>% 
+  summarize(across(where(is.numeric), mean, na.rm = T))
+toc()
+
+```
+
+#### VWC
+
+```{r}
+create_plots_final <- function(var){
+  ggplot(teros_15min_means2, aes(datetime, {{var}}, color = as.factor(depth)))+ 
+    geom_line(show.legend = F) + 
+    facet_wrap(~plot)
+}
+
+
+create_plots_final(vwc)
+
+```
+
+
+#### EC
+
+```{r}
+create_plots_final(ec)
+```
+
+
+#### Temp
+
+```{r}
+create_plots_final(tsoil)
+```
+
+### TBD
+
+Looking at this plot, there's still some cleaning we could do to smooth out the random spikes. However, we have volume on our side, and these single values likely won't mess with our analysis. For now, let's call this our final TEROS dataset. TBD if we'll want to come back and clean further based on subsequent analyses / QC efforts for other datasets.
+
+```{r write out dataset}
+write_csv(teros_15min_means2, "../data/230712_teros_means.csv")
+```
+
+
+
+
 
 
