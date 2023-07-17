@@ -83,17 +83,15 @@ sw <- bind_rows(import_4channel(sw1_filepath),
   mutate(datetime = round_date(datetime, "5 min")) %>% 
   mutate(plot = "SW")
 
-fwsw_data <- bind_rows(fw, sw) %>% 
-  #mutate(depth_reorder = fct_reorder(depth, c("30", "20", "10", "5"))) %>% 
-  filter(datetime > as_datetime("2023-06-04 18:00:00", tz = common_tz)) %>% 
-  mutate(do_percent_sat = ifelse(do_percent_sat < 0, 0, do_percent_sat)) %>% 
-  mutate(datetime_raw = as.character(datetime_raw))
-
+fwsw_data <- bind_rows(fw, sw)
+  #mutate(depth_reorder = fct_reorder(depth, c("30", "20", "10", "5")))
 
 # 3. Read in handheld data -----------------------------------------------------
 
 ## Make filepaths for each depth
+handheld_path_10cm <- paste0(handheld_path, "le_10cm")
 handheld_path_20cm <- paste0(handheld_path, "mcrl_20cm")
+handheld_path_30cm <- paste0(handheld_path, "serc_30cm")
 
 read_handheld <- function(path, sensor_depth){
  
@@ -110,10 +108,12 @@ read_handheld <- function(path, sensor_depth){
     read_delim(..., delim = "\t", skip = 16,  col_names = F) %>% 
       magrittr::set_colnames(handheld_colnames) %>% 
       clean_names() %>% 
-      rename("datetime" = date_time_yyyymmd_dhhmmss, 
-             "do_percent_sat" = oxygenairsat, 
+      rename("do_percent_sat" = oxygenairsat, 
              "temp_c" = temperature_c) %>% 
-      select(datetime, temp_c, do_percent_sat)
+      mutate(datetime_raw = parse_date(date_time_yyyymmd_dhhmmss)) %>% 
+      mutate(datetime = round_date(lubridate::as_datetime(datetime_raw, tz = common_tz), "5 min")) %>% 
+      select(datetime_raw, datetime, temp_c, do_percent_sat) %>% 
+      mutate(datetime_raw = as.character(datetime_raw))
   }
   
   files %>% 
@@ -125,7 +125,9 @@ read_handheld <- function(path, sensor_depth){
            plot = "Control")
 }
 
-control_data <- bind_rows(read_handheld(handheld_path_20cm, 20))
+control_data <- bind_rows(read_handheld(handheld_path_10cm, 10), 
+                          read_handheld(handheld_path_20cm, 20), 
+                          read_handheld(handheld_path_30cm, 30))
 
 
 # 4. Combine handheld and 4-channel data ---------------------------------------
@@ -133,6 +135,8 @@ control_data <- bind_rows(read_handheld(handheld_path_20cm, 20))
 ## This will change once we have more than one depth's worth of data for the handhelds.
 ## Right now, a single depth doesn't show up for geom_contour_filled
 df <- bind_rows(fwsw_data, control_data) %>% 
+  filter(datetime > as_datetime("2023-06-04 18:00:00", tz = common_tz)) %>% 
+  mutate(do_percent_sat = ifelse(do_percent_sat < 0, 0, do_percent_sat)) %>% 
   mutate(plot = case_when(plot == "FW" ~ "Freshwater", 
                           plot == "SW" ~ "Seawater", 
                           TRUE ~ plot))
@@ -140,11 +144,12 @@ df <- bind_rows(fwsw_data, control_data) %>%
 
 # 5. Write out dataset ---------------------------------------------------------
 
-write_csv(df %>% mutate(datetime_raw = as.character(datetime)), 
-          "data/230610_firesting.csv")
+write_csv(df %>% 
+            mutate(datetime = as.character(datetime)) %>% 
+                     filter(datetime <= post_event_end), 
+          "data/230712_firesting.csv")
 
-ggplot(df, aes(datetime, depth)) + 
-  #geom_tile() +
+ggplot(df %>% filter(datetime <= post_event_end), aes(datetime, depth)) + 
   geom_contour_filled(aes(z = do_percent_sat)) + 
   geom_vline(aes(xintercept = dump_start1), color = "white", linetype = "dashed") + 
   geom_vline(aes(xintercept = dump_start2), color = "white", linetype = "dashed") + 
@@ -152,14 +157,14 @@ ggplot(df, aes(datetime, depth)) +
   scale_fill_viridis_d(option = "A", direction = -1) + 
   facet_wrap(~plot, ncol = 1) + 
   labs(x = "", y = "Depth (cm)", fill = "DO (%)")
-ggsave("figures/230610_firesting.png", width = 8, height = 6)
+ggsave("figures/230712_firesting.png", width = 8, height = 6)
 
 
-df %>% 
-  group_by(datetime, plot) %>%
-  summarize(do = mean(do_percent_sat, na.rm = T)) %>% 
-  ggplot(aes(datetime, do, color = plot)) + 
-  geom_line()
+# df %>% 
+#   group_by(datetime, plot) %>%
+#   summarize(do = mean(do_percent_sat, na.rm = T)) %>% 
+#   ggplot(aes(datetime, do, color = plot)) + 
+#   geom_line()
 
 
 # X. Pulling data for AMP for COMPASS review -----------------------------------

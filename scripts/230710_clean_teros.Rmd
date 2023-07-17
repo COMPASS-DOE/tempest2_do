@@ -24,8 +24,12 @@ Looking at all the TEROS data from the time-period of interest, it's clear that 
 source("../scripts/0_setup.R")
 
 ## Read in data
-teros_5min_raw <- read_csv("../data/230710_teros_raw_5min.csv")
-teros_15min_raw <- read_csv("../data/230710_teros_raw_15min.csv")
+teros_5min_raw <- read_csv("../data/230710_teros_raw_5min.csv") %>% 
+  mutate(datetime_raw = datetime, 
+         datetime = force_tz(datetime, tz = common_tz))
+teros_15min_raw <- read_csv("../data/230710_teros_raw_15min.csv")  %>% 
+  mutate(datetime_raw = datetime, 
+         datetime = force_tz(datetime, tz = common_tz))
 
 ```
 
@@ -365,7 +369,8 @@ tic("calculate means...again") ##151
 teros_15min_means2 <- teros_15min_trim3 %>% 
   select(-c(contains("_id"), grid_square)) %>% 
   group_by(datetime, plot, depth) %>% 
-  summarize(across(where(is.numeric), mean, na.rm = T))
+  summarize(across(where(is.numeric), mean, na.rm = T), 
+            datetime_raw = first(datetime_raw))
 toc()
 
 ```
@@ -403,7 +408,9 @@ create_plots_final(tsoil)
 Looking at this plot, there's still some cleaning we could do to smooth out the random spikes. However, we have volume on our side, and these single values likely won't mess with our analysis. For now, let's call this our final TEROS dataset. TBD if we'll want to come back and clean further based on subsequent analyses / QC efforts for other datasets.
 
 ```{r write out dataset}
-write_csv(teros_15min_means2, "../data/230712_teros_means.csv")
+write_csv(teros_15min_means2 %>% 
+            mutate(datetime = as.character(datetime)) %>% 
+                     filter(datetime <= post_event_end), "../data/230712_teros_means.csv")
 ```
 
 

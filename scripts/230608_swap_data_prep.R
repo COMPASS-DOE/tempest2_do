@@ -98,7 +98,7 @@ df_final %>%
   labs(x = "", y = "Depth (cm)", fill = "Redox (mv)")
 ggsave("figures/230609_redox_contours.png", width = 9, height = 8)
 
-write_csv(df_final, "data/230618_swap_redox_raw.csv")
 
-
+write_csv(df_final %>% 
+            mutate(datetime = as.character(datetime)), "data/230618_swap_redox_raw.csv")
 
