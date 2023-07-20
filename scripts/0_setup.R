@@ -21,6 +21,7 @@ p_load(tidyverse,
        furrr,  # future_map()
        tictoc, # time stuff
        sf, 
+       ggpubr, #stat_compare_means()
        metR, # geom_contour_fill
        rnaturalearth,
        ggspatial, # north arrow and compass
@@ -69,5 +70,6 @@ label_flood_periods <- function(data){
     mutate(period_relabel = case_when(period == "0_preflood" ~ "Pre-Flood", 
                                       period == "1_flood1" ~ "Flood #1",
                                       period == "2_flood2" ~ "Flood #2",
-                                      period == "3_postflood" ~ "Post-Flood"))
+                                      period == "3_postflood" ~ "Post-Flood"))  %>% 
+    mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood"))
 }

@@ -33,7 +33,8 @@ output_path = "figures/230713_figures_v1/"
 read_csv_ <- function(...){read_csv(...)  %>% 
     mutate(datetime = force_tz(datetime, tzone = common_tz)) %>% 
     filter(datetime > pre_event_start & 
-             datetime < post_event_end)}
+             datetime < post_event_end)} %>% 
+  label_flood_periods()
 
 ## Load firesting data
 firesting <- read_csv_("data/230712_firesting.csv")
@@ -74,9 +75,6 @@ plot_contours <- function(data, var, y_label, fill_direction, title){
 }
 
 
-
-
-
 vwc_countours <- plot_contours(teros, vwc, "VWC (m3/m3)", 1, "TEROS - Volumetric Water Content")
 ec_countours <- plot_contours(teros, ec, "EC (uS/cm)", 1, "TEROS - Conductivity")
 
@@ -91,14 +89,34 @@ ggsave(paste0(output_path, "Fig4_swap_contours.png"), width = 8, height = 6)
 
 
 
+# 4. Create boxplots -----------------------------------------------------------
+
+make_boxplot <- function(data, var, y_label){
+  
+  #my_comparisons <- list(c("Pre-Flood", "Flood #1"), c("Flood #1", "Flood #2"), c("Flood #2", "Post-Flood"))
+  
+  ggplot(data, aes(period_relabel, {{var}})) + 
+    #ggplot(data, aes(period_relabel, {{var}}, fill = as.factor(depth))) + 
+    geom_boxplot() + 
+    facet_wrap(~plot, ncol = 1) + 
+    #scale_fill_viridis_d() + 
+    labs(x = "", y = y_label, fill = "Depth (cm)") #+ 
+    #stat_compare_means(comparisons = my_comparisons)
+    
+}
+
+plot_grid(make_boxplot(teros, vwc, "VWC (m3/m3)"), 
+          make_boxplot(firesting, do_percent_sat, "DO (%)"), 
+          make_boxplot(swap, redox_mv, "Redox (mV)"), 
+          nrow = 1)
+ggsave(paste0(output_path, "Boxplots.png"), width = 12, height = 6)
 
 
 
 
 
 
-
-# 4. Create supplemental plots -------------------------------------------------
+# 5. Create supplemental plots -------------------------------------------------
 
 ## Depending how busy it gets, put time-series next to boxplots
 
@@ -180,15 +198,15 @@ vwc_do %>%
   geom_point() + 
   facet_wrap(~period_relabel)
 
-p_load(WaveletComp)
-
-wc_test <- vwc_do %>% 
-  filter(depth == 5 & plot == "Freshwater")
-
-x <- analyze.wavelet(my.data = vwc_do2, my.series = "do_percent_sat")
-
-x <- analyze.coherency(my.data = as.data.frame(vwc_do2[,2:3]), my.pair = c(1,2))
-wc.image(x)
+# p_load(WaveletComp)
+# 
+# wc_test <- vwc_do %>% 
+#   filter(depth == 5 & plot == "Freshwater")
+# 
+# x <- analyze.wavelet(my.data = vwc_do2, my.series = "do_percent_sat")
+# 
+# x <- analyze.coherency(my.data = as.data.frame(vwc_do2[,2:3]), my.pair = c(1,2))
+# wc.image(x)
 
 # Y. Create ex plots to explain contours
 
