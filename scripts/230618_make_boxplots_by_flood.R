@@ -12,6 +12,9 @@
 ## First, load setup script to set up environment
 source("scripts/0_setup.R")
 
+library(devtools)
+install_github("ethanbass/ggtukey")
+require(ggtukey)
 
 # 2. Functions -----------------------------------------------------------------
 
