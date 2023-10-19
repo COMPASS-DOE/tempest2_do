@@ -27,8 +27,15 @@ us <- ne_states(country = "united states of america",
                 returnclass = "sf") %>% 
   st_crop(cb_bbox)
 
-ggplot() + 
-  geom_sf(data = us)
+gcrew <- tibble(name = "gcrew", 
+                lat = 38.87392, 
+                long = -76.55206) %>% 
+  st_as_sf(coords = c("long", "lat"), crs = common_crs)
+  
+  
+p1 <- ggplot() + 
+  geom_sf(data = us) + 
+  geom_sf(data = gcrew, size = 5)
 
 
 # 3. Read in FW/SW plot grid lat-longs -----------------------------------------
@@ -58,25 +65,39 @@ plots_sf <- bind_rows(format_coords(fw_coords),
           format_coords(sw_coords)) %>% 
   st_as_sf(coords = c("long", "lat"), crs = common_crs) 
 
-
 polygons <- plots_sf %>% 
   dplyr::group_by(plot) %>% 
   dplyr::summarize() %>%
   st_cast("POLYGON") %>% 
   st_convex_hull()
 
-ggplot() + 
-  geom_sf(data = polygons, aes(fill = plot), alpha = 0.5) 
-  #geom_sf(data = plots_sf) 
-
-
-
-
-
 
 fw_teros_coords <- read_csv("data/metadata/TEMPEST_FW_Teros_DD.csv") %>% 
-  mutate(LatDD = str_sub(LatDD, start = 1, end = -2), 
+  mutate(LatDD = as.numeric(str_sub(LatDD, start = 1, end = -2)), 
          LongDD = as.numeric(str_sub(LongDD, start = 1, end = -2)) * -1)
 
 ## Potentially of use: survey points for FW and SW
 ## https://drive.google.com/drive/folders/1zfpD20z1PuMFFQRGoPJA2HIRseWhxx0J
+
+## Now trim teros coordinates to the ones we used
+
+
+
+p2_1 <- ggplot() + 
+  geom_sf(data = polygons, aes(fill = plot), alpha = 0.5) 
+#geom_sf(data = plots_sf) 
+
+p2_2 <- ggplot() + 
+  geom_sf(data = polygons %>% filter(plot == "FW"), 
+          aes(fill = plot), alpha = 0.5, show.legend = F) + 
+  theme_map()
+
+p2 <- plot_grid(p2_1, p2_2, ncol = 1, rel_heights = c(0.5, 1))
+  
+  
+plot_grid(p1, p2, nrow = 1)
+ggsave("figures/231018_map_v1.png", width = 8, height = 4)
+
+
+
+

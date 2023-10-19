@@ -21,6 +21,7 @@ p_load(tidyverse,
        furrr,  # future_map()
        tictoc, # time stuff
        sf, 
+       ggallin,
        ggpubr, #stat_compare_means()
        metR, # geom_contour_fill
        rnaturalearth,
