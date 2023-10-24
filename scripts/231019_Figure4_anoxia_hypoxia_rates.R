@@ -24,26 +24,12 @@ df <- read_csv("data/230610_firesting.csv") %>%
 
 # 3. Calculate the time hypoxic and anoxic by flood ----------------------------
 
-anoxia_by_plot <- df %>% 
+anoxia_by_plot_and_depth <- df %>% 
   filter(plot != "Control") %>% 
   group_by(period_relabel, plot, depth) %>% 
   summarize(period = first(period), 
             perc_anoxic = length(do_percent_sat[do_percent_sat < 1]) / length(do_percent_sat) * 100,
             perc_hypoxic = length(do_percent_sat[do_percent_sat < 20]) / length(do_percent_sat) * 100)
-
-p_hypoxic <- ggplot(anoxia_by_plot_and_depth, aes(period_relabel, perc_hypoxic, fill = as.factor(depth))) + 
-  geom_col(position = "dodge") + 
-  facet_wrap(~plot, nrow = 2, scales = "free_x") + 
-  scale_fill_viridis_d() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-  labs(x = "", y = "% of time hypoxic", fill = "Depth (cm)", title = "Hypoxia (DO < 20%)")
-
-p_anoxic <- ggplot(anoxia_by_plot_and_depth, aes(period_relabel, perc_anoxic, fill = as.factor(depth))) + 
-  geom_col(position = "dodge") + 
-  facet_wrap(~plot, nrow = 2, scales = "free_x") + 
-  scale_fill_viridis_d() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-  labs(x = "", y = "% of time anoxic", fill = "Depth (cm)", title = "Anoxia (DO < 1%)")
 
 
 # 4. Calculate DO consumption rates --------------------------------------------
@@ -159,17 +145,34 @@ rate_stats <- df_rates %>%
          delta_hrs = delta_index / 12, 
          do_perc_hr = delta_do / delta_hrs)
 
-p_rates <- ggplot(rate_stats, aes(period_relabel, do_perc_hr, fill = as.factor(depth))) + 
-  geom_col(position = "dodge") + 
-  facet_wrap(~plot, nrow = 2, scales = "free_x") + 
-  scale_fill_viridis_d() + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+# 5. Create / combine plots and export -----------------------------------------
+
+## Set up a helper function that standardizes what can be across all plots 
+common_plot_setup <- function(...) {
+  p <- ggplot(...) +
+    geom_col(position = "dodge") +
+    scale_fill_viridis_d() +
+    facet_wrap(~plot, ncol = 1) + 
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1), 
+          plot.title = element_text(hjust = 0.5))
+  
+  return(p)
+}
+
+## Make individual plots
+p_rates <- common_plot_setup(rate_stats, aes(period_relabel, do_perc_hr, fill = as.factor(depth))) + 
   labs(x = "", y = "DO Consumption rates", fill = "Depth (cm)", title = "DO consumption (% / hr)")
 
+p_hypoxic <- common_plot_setup(data = anoxia_by_plot_and_depth, aes(x = period_relabel, y = perc_hypoxic, fill = as.factor(depth))) +
+  labs(x = "", y = "% of time hypoxic", fill = "Depth (cm)", title = "Hypoxia (DO < 20%)")
+
+p_anoxic <- common_plot_setup(anoxia_by_plot_and_depth, aes(period_relabel, perc_anoxic, fill = as.factor(depth))) + 
+  labs(x = "", y = "% of time anoxic", fill = "Depth (cm)", title = "Anoxia (DO < 1%)")
+
+## Pull label
 legend <- cowplot::get_legend(p_rates)
 
-# 5. Combine plots and export --------------------------------------------------
-
+## Create combined plot
 plot_grid(p_rates + theme(legend.position = "none"), 
           NULL,
           p_hypoxic + theme(legend.position = "none"), 
@@ -177,8 +180,11 @@ plot_grid(p_rates + theme(legend.position = "none"),
           p_anoxic + theme(legend.position = "none"), 
           legend, 
           rel_widths = c(1, 0.1, 1, 0.1, 1, 0.3),
+          labels = c("A", "", "B", "", "C", ""),
           nrow = 1)
 ggsave("figures/231019_hypoxic_anoxic_and_rates.png", width = 12, height = 6)
 
-
+anoxia_by_plot_and_depth %>% 
+  group_by(period_relabel, plot) %>% 
+  summarize(mean(perc_anoxic))
 
