@@ -13,7 +13,7 @@ source("scripts/0_setup.R")
 
 ## Set up a helper function
 read_csv_ <- function(...){
-  read_csv(...)  %>% 
+  read_csv(...) %>% 
     mutate(datetime = force_tz(datetime, tzone = common_tz)) %>% 
     filter(datetime > pre_event_start & 
              datetime < post_event_end)
