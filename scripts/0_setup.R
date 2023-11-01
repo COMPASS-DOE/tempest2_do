@@ -21,6 +21,7 @@ p_load(tidyverse,
        furrr,  # future_map()
        tictoc, # time stuff
        sf, 
+       hms,
        ggallin,
        ggpubr, #stat_compare_means()
        metR, # geom_contour_fill
@@ -55,9 +56,6 @@ dump_end2 = as.POSIXct("2023-06-07 15:00", tz = common_tz)
 mean_ <- function(var){mean({{var}}, na.rm = T)}
 median_ <- function(var){median({{var}}, na.rm = T)}
 
-
-
-
 ## Helper function to label pre-determined time-periods 
 label_flood_periods <- function(data){ 
   data %>% 
@@ -74,3 +72,17 @@ label_flood_periods <- function(data){
                                       period == "3_postflood" ~ "Post-Flood"))  %>% 
     mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood"))
 }
+
+
+## Dashed line for start of event
+add_line <- function(){
+  geom_vline(xintercept = c(dump_start1, dump_start2), linetype = "dashed", color = "gray25")
+}
+
+## Add geom_rect (use annotate: geom_rect creates many, many overlapping boxes)
+add_box <- function(){
+  annotate("rect", xmin = dump_start1, xmax = end_gmt, 
+           ymin = -Inf, ymax = Inf, 
+           fill = "lightblue", alpha = 0.7)
+}
+
