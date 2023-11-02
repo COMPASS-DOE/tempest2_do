@@ -27,6 +27,7 @@ source("../scripts/0_setup.R")
 teros_5min_raw <- read_csv("../data/230710_teros_raw_5min.csv") %>% 
   mutate(datetime_raw = datetime, 
          datetime = force_tz(datetime, tz = common_tz))
+
 teros_15min_raw <- read_csv("../data/230710_teros_raw_15min.csv")  %>% 
   mutate(datetime_raw = datetime, 
          datetime = force_tz(datetime, tz = common_tz))
@@ -136,6 +137,16 @@ inner_join(teros_5min_trim2 %>% rename("vwc_5cm" = vwc) %>% select(datetime, plo
 
 ```
 
+### Alternate route
+
+The dataset generated from the process below still has unusual spikes, which, I think, originate from the summarization process where sensors are cutting in and out. I'm also going to write out the datasets here then look at merging them in more detail, leaving the below for perpetuity.
+
+```{r}
+write_csv(teros_5min_trim2, "../data/231101_teros_5min_raw.csv")
+write_csv(teros_15min_trim2, "../data/231101_teros_15min_raw.csv")
+```
+
+
 ### Decision {.tabset}
 
 I'm going to go with **#3 above**, because the 15-minute record is complete, so even though the same record for either 5-min or 15-min should be the same, we will keep all 15-minute records where possible (and thus the full time-frame) and fill in 5-min values as available. My main concern is we will now have **unequal sample sizes** for different periods of the same length (i.e. 6/3, with 5-minute data missing, a day will have 4x24=96 values, while 6/9 will have 12*24=288 values). This likely doesn't matter much since we have such high sample-sizes across our datasets, but something to keep in mind. Let's revisualize our newly merged dataset
@@ -151,10 +162,18 @@ teros_raw <- bind_rows(teros_15min_trim2,
 
 ```{r}
 
+median_ <- function(...){median(..., na.rm = T)}
+
+teros_raw_means <- teros_raw %>% 
+    select(-data_logger_id) %>% 
+  group_by(datetime, plot, depth) %>% 
+  summarize(across(where(is.numeric), median_))
+
 create_plots2 <- function(var){
   ggplot(teros_raw, aes(datetime, {{var}})) + 
   geom_line(aes(color = grid_square), alpha = 0.5) + 
-  geom_smooth(se = F, color = "black") + 
+  geom_line(data = teros_raw_means) + 
+  #geom_smooth(se = F, color = "black") + 
   facet_wrap(plot~depth, scales = "free")
 }
 

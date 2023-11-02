@@ -51,7 +51,8 @@ ggplot(df_plot, aes(datetime, value, color = name)) +
   geom_text(data = df_extrema, aes(label = time), hjust = -0.1) +
   add_line() + 
   facet_wrap(plot~depth)
-ggsave("figures/231026_cusums_5_30_FW_SW.png", width = 5, height = 7)
+ggsave("figures/231026_cusums_5_30_FW_SW.png", width = 9, height = 7)
+
 
 ts_plot <- function(var){
   ggplot(df, aes(datetime, {{var}}, color = depth)) + 
