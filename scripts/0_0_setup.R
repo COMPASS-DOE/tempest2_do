@@ -9,11 +9,11 @@
 ## Load packages
 require(pacman)
 p_load(tidyverse, 
-       rdrop2, 
+       #rdrop2, 
        cowplot, 
        lubridate, 
-       ggtukey, # adding letters to boxplots
-       multcompView, # compact letter display for comparing boxplots
+       #ggtukey, # adding letters to boxplots
+      # multcompView, # compact letter display for comparing boxplots
        plotly,
        parsedate, # parse_date()
        janitor, # clean_names()
@@ -24,10 +24,10 @@ p_load(tidyverse,
        hms,
        ggallin,
        ggpubr, #stat_compare_means()
-       metR, # geom_contour_fill
+       #metR, # geom_contour_fill
        rnaturalearth,
        ggspatial, # north arrow and compass
-       ggsflabel, # add labels
+       #ggsflabel, # add labels
        googledrive, 
        ggthemes) #theme_map()
        

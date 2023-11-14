@@ -1,0 +1,4 @@
+﻿HydraGO Serial    ,HydraProbe Serial    ,Timestamp    ,Location    ,Latitude    ,Longitude    ,Soil Moisture (wfv)    ,Soil Moisture (%)    ,Soil Temperature (C)    ,Soil Temperature (F)    ,Bulk EC(Raw) (dS/m)    ,Bulk EC(TC) (dS/m)    ,Pore Water EC (dS/m)    ,Pore Water EC Offset    ,Raw Real Dielectric    ,Raw Imaginary Dielectric    ,Loss Tangent    ,Memo    ,Calibration    ,Site
+HG279332,278928,7/12/23 10:58,Default,38.874614,-76.549966,0.432,43.2,27.5,81.5,0.52,0.5,1.4,3.4,31.39,18.79,0.6,TEMPEST-CT-REDOX-C7,Default,Control
+HG279332,278928,7/12/23 11:01,Default,38.874147,-76.552702,0.417,41.7,26.7,80,0.77,0.74,2.19,3.4,29.942,27.552,0.92,TEMPEST-SW-REDOX-E6,Default,Seawater
+HG279332,278928,7/12/23 11:04,Default,38.873634,-76.551883,0.506,50.6,26.2,79.1,0.58,0.56,1.22,3.4,39.454,20.788,0.53,TEMPEST-FW-REDOX-G4,Default,Freshwater
