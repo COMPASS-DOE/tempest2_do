@@ -1,0 +1,33 @@
+period_relabel,plot,depth,period,perc_anoxic,perc_hypoxic
+Pre-Flood,Freshwater,5,0_preflood,0,0
+Pre-Flood,Freshwater,10,0_preflood,0,0
+Pre-Flood,Freshwater,20,0_preflood,0,0
+Pre-Flood,Freshwater,30,0_preflood,0,0
+Pre-Flood,Seawater,5,0_preflood,0,0
+Pre-Flood,Seawater,10,0_preflood,0,0
+Pre-Flood,Seawater,20,0_preflood,0,0
+Pre-Flood,Seawater,30,0_preflood,0,0
+Flood #1,Freshwater,5,1_flood1,14.930555555555555,30.208333333333332
+Flood #1,Freshwater,10,1_flood1,15.277777777777779,25.694444444444443
+Flood #1,Freshwater,20,1_flood1,31.59722222222222,50
+Flood #1,Freshwater,30,1_flood1,32.98611111111111,42.36111111111111
+Flood #1,Seawater,5,1_flood1,0,14.583333333333334
+Flood #1,Seawater,10,1_flood1,1.7361111111111112,19.09722222222222
+Flood #1,Seawater,20,1_flood1,0,22.22222222222222
+Flood #1,Seawater,30,1_flood1,0,20.13888888888889
+Flood #2,Freshwater,5,2_flood2,28.47222222222222,52.083333333333336
+Flood #2,Freshwater,10,2_flood2,46.18055555555556,56.59722222222222
+Flood #2,Freshwater,20,2_flood2,64.93055555555556,79.86111111111111
+Flood #2,Freshwater,30,2_flood2,82.29166666666666,100
+Flood #2,Seawater,5,2_flood2,13.88888888888889,54.861111111111114
+Flood #2,Seawater,10,2_flood2,15.625,62.5
+Flood #2,Seawater,20,2_flood2,23.958333333333336,63.541666666666664
+Flood #2,Seawater,30,2_flood2,77.43055555555556,100
+Post-Flood,Freshwater,5,3_postflood,0,0
+Post-Flood,Freshwater,10,3_postflood,0,0
+Post-Flood,Freshwater,20,3_postflood,18.118466898954704,19.860627177700348
+Post-Flood,Freshwater,30,3_postflood,100,100
+Post-Flood,Seawater,5,3_postflood,0,0
+Post-Flood,Seawater,10,3_postflood,0,7.291666666666667
+Post-Flood,Seawater,20,3_postflood,33.33333333333333,37.5
+Post-Flood,Seawater,30,3_postflood,72.22222222222221,72.22222222222221

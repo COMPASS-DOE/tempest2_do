@@ -27,7 +27,7 @@ p_load(tidyverse,
        #metR, # geom_contour_fill
        rnaturalearth,
        ggspatial, # north arrow and compass
-       #ggsflabel, # add labels
+       ggsflabel, # add labels
        googledrive, 
        ggthemes) #theme_map()
        
@@ -47,9 +47,9 @@ post_event_end = as.POSIXct("2023-06-11 23:55", tz = common_tz)
 
 ## Set timestamps to mark the start of each flood event. Note that events started
 ## at 6am EDT, but all timezones are in EST
-dump_start1 = as.POSIXct("2023-06-06 04:00", tz = common_tz)
+dump_start1 = as.POSIXct("2023-06-06 05:00", tz = common_tz)
 dump_end1 = as.POSIXct("2023-06-06 15:00", tz = common_tz)
-dump_start2 = as.POSIXct("2023-06-07 04:00", tz = common_tz)
+dump_start2 = as.POSIXct("2023-06-07 05:00", tz = common_tz)
 dump_end2 = as.POSIXct("2023-06-07 15:00", tz = common_tz)
 
 ## Helper functions that add na.rm to stats functions
@@ -76,7 +76,10 @@ label_flood_periods <- function(data){
 
 ## Dashed line for start of event
 add_line <- function(){
-  geom_vline(xintercept = c(dump_start1, dump_start2), linetype = "dashed", color = "gray25")
+  geom_vline(xintercept = c(dump_start1, dump_start2), linetype = "dashed", 
+             #color = "gray25", 
+             color = "blue", 
+             width = 2)
 }
 
 ## Add geom_rect (use annotate: geom_rect creates many, many overlapping boxes)

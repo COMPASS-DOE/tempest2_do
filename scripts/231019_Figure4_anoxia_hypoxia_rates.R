@@ -12,7 +12,7 @@
 # 1. Setup ---------------------------------------------------------------------
 
 ## First, load setup script to set up environment
-source("scripts/0_setup.R")
+source("scripts/0_0_setup.R")
 
 
 # 2. Read in data --------------------------------------------------------------
@@ -31,6 +31,8 @@ anoxia_by_plot_and_depth <- df %>%
             perc_anoxic = length(do_percent_sat[do_percent_sat < 1]) / length(do_percent_sat) * 100,
             perc_hypoxic = length(do_percent_sat[do_percent_sat < 20]) / length(do_percent_sat) * 100)
 
+
+write_csv(anoxia_by_plot_and_depth, "data/231116_anoxia_by_plot_and_depth.csv")
 
 # 4. Calculate DO consumption rates --------------------------------------------
 
@@ -112,6 +114,10 @@ df_rates <- inner_join(df_rates_raw %>% select(-period_relabel),
   ungroup() %>% 
   unique()
 
+
+
+write_csv(df_rates, "data/231116_do_consumption_rates.csv")
+
 ggplot(data = df_rates, aes(datetime, do_percent_sat)) + 
   geom_line() + 
   geom_point(data = df_rates %>% filter(consumption == TRUE), aes(color = period_relabel)) + 
@@ -144,6 +150,8 @@ rate_stats <- df_rates %>%
          delta_index = end - start, 
          delta_hrs = delta_index / 12, 
          do_perc_hr = delta_do / delta_hrs)
+
+write_csv(rate_stats, "data/231116_rate_stats.csv")
 
 # 5. Create / combine plots and export -----------------------------------------
 

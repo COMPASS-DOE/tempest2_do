@@ -13,7 +13,7 @@
 
 # 1. Setup ---------------------------------------------------------------------
 
-source("scripts/0_setup.R")
+source("scripts/0_0_setup.R")
 
 ## Load packages
 require(pacman)
@@ -76,7 +76,7 @@ df_raw <- bind_rows(set_depths(control),
 sw_start <- min(df_raw %>% filter(plot == "SW") %>% pull(datetime))
 
 ## We're also filtering to just the first ref probe based on early issues with rb
-df_final <- df_raw %>% 
+df_combined <- df_raw %>% 
   group_by(datetime, depth_cm, ref, plot) %>% 
   summarize(batt_v = mean(batt_v), 
             redox_mv = mean(redox_mv)) %>% 
@@ -85,19 +85,42 @@ df_final <- df_raw %>%
   mutate(datetime_raw = as.character(datetime)) %>% 
   mutate(plot = case_when(plot == "FW" ~ "Freshwater", 
                           plot == "SW" ~ "Seawater", 
-                          TRUE ~ plot))
+                          TRUE ~ plot)) 
 
-df_final %>% 
-  filter(datetime > sw_start) %>% 
-  ggplot(aes(datetime, depth_cm)) + 
-  geom_contour_filled(aes(z = redox_mv), bins = 20) + 
+## Finally, we need to convert ORP to Eh so we're standardized to an SHE. I'm following
+## https://www.biorxiv.org/content/10.1101/2023.06.12.544684v1.full.pdf, which cites 
+## ISO 153 11271:2022, APHA Method 2580
+## Since the correction requires temperature, let's bring in temperature from 
+## TEROS data, and we'll just 30cm for 50cm since we don't have that data
+join_cols = c("datetime", "plot", "depth_cm")
+
+teros <- read_csv("data/231102_teros_final.csv") %>%  
+  mutate(datetime = force_tz(datetime, tzone = common_tz)) %>% 
+  rename("depth_cm" = depth) %>% 
+  select(all_of(join_cols), tsoil) %>%
+  group_by(datetime, plot) %>% 
+  complete(depth_cm = c(5, 15, 30, 50), fill = list(tsoil = NA)) %>% 
+  fill(tsoil, .direction = "down")
+
+## Eh (mV) = ORP (mV) -0.718*T +224.41 
+df_final <- df_combined %>% 
+  left_join(teros, by = c(join_cols)) %>% 
+  mutate(eh_mv = redox_mv - (tsoil * .718) + 224.41)
+
+df_plot <- df_final %>% 
+  mutate(redox_state = ifelse(eh_mv > 300, "Fe oxidizing", "Fe reducing")) %>% 
+  filter(datetime > sw_start) 
+
+ggplot(df_plot, aes(datetime, depth_cm)) + 
+  geom_contour_filled(aes(z = eh_mv)) + 
+  #geom_contour_filled(aes(z = eh_mv)) + 
+  geom_point(data = df_plot %>% filter(redox_state == "Fe reducing"), color = "black", alpha = 0.5) + 
   scale_y_reverse() + 
   geom_vline(aes(xintercept = dump_start1), color = "black", linetype = "dashed") + 
   geom_vline(aes(xintercept = dump_start2), color = "black", linetype = "dashed") + 
   facet_wrap(~plot, ncol = 1) + 
   labs(x = "", y = "Depth (cm)", fill = "Redox (mv)")
 ggsave("figures/230609_redox_contours.png", width = 9, height = 8)
-
 
 write_csv(df_final %>% 
             mutate(datetime = as.character(datetime)), "data/230618_swap_redox_raw.csv")

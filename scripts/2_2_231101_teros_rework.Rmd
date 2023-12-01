@@ -227,7 +227,7 @@ Ohhhhh ratz. That's a lot, and they're happening during the event... Hmm. First,
 sensors_w_multiple_depths <- grouping_combos %>% 
   group_by(plot, grid_square) %>%
   summarize(num_depths = n_distinct(depth)) %>% 
-  filter(num_depths == 3) %>% 
+  filter(num_depths == 3) %>% ## only include nests with all three depths
   select(-num_depths)
 ```
 
