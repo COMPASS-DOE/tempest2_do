@@ -219,9 +219,9 @@ plot_rain_c <- ggplot(flood_ts, aes(datetime_est, c_rain_cm)) +
   geom_area(data = flood_ts %>% 
               filter(flood == "Flood #2"), alpha = 0.1, fill = "blue") + 
   annotate(geom = "text", x = as_datetime("2023-06-05 04:00:00"), y = 7.5, 
-           label = "Flood #1: 15 cm in 8 hrs") + 
+           label = "Flood #1: 15 cm in 10 hrs") + 
   annotate(geom = "text", x = as_datetime("2023-06-06 04:00:00"), y = 22.5, 
-           label = "Flood #2: 15 cm in 8 hrs") + 
+           label = "Flood #2: 15 cm in 10 hrs") + 
   scale_x_datetime(expand = c(0, 0)) + 
   scale_y_continuous(limits = c(0, 35), expand = c(0, 0)) + 
   labs(x = "", y = "Flooding (cm)")
@@ -287,6 +287,7 @@ firesting <- read_csv("data/230712_firesting.csv") %>%
 
 ggplot(firesting, aes(datetime_est, depth)) + 
   geom_contour_filled(aes(z = do_percent_sat), bins = 10) + 
+  geom_point(data = firesting %>% filter(do_percent_sat < 1), color = "orange", alpha = 0.5, size = 0.5) + 
   annotate("rect", xmin = dump_start1, xmax = dump_end1, 
            ymin = 5, ymax = 30, fill = "white", alpha = 0.2) +
   annotate("rect", xmin = dump_start2, xmax = dump_end2, 
@@ -390,6 +391,70 @@ ggsave("figures/agu/5_do_stats.pdf",
        width = contour_width, height = contour_height)
 
 
+# 9. Redox plot ----------------------------------------------------------------
+
+swap <- read_csv("data/230618_swap_redox_raw.csv") %>% 
+  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
+  #label_flood_periods() %>% 
+  # mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood")) %>% 
+  rename("depth" = depth_cm) %>% 
+  #filter(!(plot == "Control" & depth == 5)) %>% # Filter out so it's comparable to VWC/DO
+  filter(!(plot == "Control" & redox_mv == 0)) %>% # manually remove errors
+  filter(!(plot == "Seawater" & redox_mv == 0)) %>% 
+  filter(!is.na(eh_mv))
+
+ggplot(swap, aes(datetime_est, depth)) + 
+  geom_contour_filled(aes(z = eh_mv), bins = 10) + 
+  #geom_point(data = swap %>% filter(eh_mv < 300), color = "orange", alpha = 0.5, size = 0.5) + 
+  #geom_point(data = firesting %>% filter(do_percent_sat < 1), color = "orange", alpha = 0.5, size = 0.5) + 
+  annotate("rect", xmin = dump_start1, xmax = dump_end1, 
+           ymin = 5, ymax = 50, fill = "white", alpha = 0.2) +
+  annotate("rect", xmin = dump_start2, xmax = dump_end2, 
+           ymin = 5, ymax = 50, fill = "white", alpha = 0.2) +
+  geom_vline(aes(xintercept = dump_start1), color = "white", linetype = "dashed") + 
+  geom_vline(aes(xintercept = dump_start2), color = "white", linetype = "dashed") + 
+  facet_wrap(~plot, ncol = 1) + 
+  scale_x_datetime(expand = c(0,0)) + 
+  scale_y_reverse(expand = c(0,0)) + 
+  scale_fill_viridis_d(direction = -1) + 
+  labs(x = "", y = "Depth (cm)", fill = "Eh (mV)") + 
+  theme(strip.background = element_rect(fill = "gray70"))
+ggsave("figures/agu/6_redox.pdf", 
+       width = contour_width, height = contour_height)
+
+swap %>% 
+  drop_na() %>% 
+  group_by(depth, plot) %>% 
+  summarize(n = n(), 
+            min_eh = min(eh_mv), 
+            max_eh = max(eh_mv)) %>% 
+  mutate(delta_eh = max_eh - min_eh, 
+         percent = (delta_eh / max_eh) * 100) %>% 
+  filter(plot != "Control")
+
+ggplot(swap, aes(datetime_est, eh_mv, color = plot)) + 
+  geom_line() + 
+  facet_wrap(~depth, ncol = 1)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## Combine vwc w DO and make hysteresis
 vwc_do_cols <- c("datetime_est", "plot", "depth")
 
@@ -408,15 +473,7 @@ vwc_do %>%
 
 
 ## Cusums
-swap <- read_csv("data/230618_swap_redox_raw.csv") %>% 
-  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
-  #label_flood_periods() %>% 
- # mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood")) %>% 
-  rename("depth" = depth_cm) %>% 
-  #filter(!(plot == "Control" & depth == 5)) %>% # Filter out so it's comparable to VWC/DO
-  filter(!(plot == "Control" & redox_mv == 0)) %>% # manually remove errors
-  filter(!(plot == "Seawater" & redox_mv == 0)) %>% 
-  filter(!is.na(eh_mv))
+
 
 ## Check plot to make sure data are clean
 ggplot(swap, aes(datetime_est, eh_mv, color = interaction(depth))) + 
@@ -433,9 +490,34 @@ combined_data <- inner_join(firesting %>% select(all_of(common_cols), do_percent
   filter(depth == "5" | depth == "30") #%>% 
   #filter(datetime_est < "2023-06-09")
 
+x <- combined_data %>% 
+  select(datetime_est, depth, plot, do_percent_sat) %>% 
+  mutate(z = (do_percent_sat - mean(do_percent_sat)) / sd(do_percent_sat))
+
+inner_join(x %>% filter(plot == "Control") %>% select(-plot) %>% rename(do_control = do_percent_sat),
+           x %>% filter(plot == "Freshwater") %>% select(-plot) %>% rename(do_fw = do_percent_sat), 
+           by = c("datetime_est", "depth")) %>% 
+  mutate(delta_do = do_fw - mean(do_control)) %>% 
+  ggplot(aes(datetime_est, delta_do, color = depth)) + geom_line()
+
+sds <- combined_data %>% 
+  group_by(plot, depth) %>% 
+  summarize(sd = sd(do_percent_sat))
+
+
+
+  mutate(z = (do_percent_sat - mean(do_percent_sat)) / sd(do_percent_sat)) %>% 
+ggplot(aes(datetime_est, z, color = plot)) + 
+  geom_line() + 
+  facet_wrap(~depth)
+
+
+
+
 
 control_plot <- function(var, direction, y_label, legend_position){
   
+  # 1. Calculate standard deviation of the 
   control_sd <- sd(combined_data %>% 
                      filter(plot == "Control") %>% 
                      pull({{var}}))
@@ -443,7 +525,7 @@ control_plot <- function(var, direction, y_label, legend_position){
   x <- combined_data %>% 
     mutate(depth = case_when(depth == 5 ~ " 5 cm", 
                              depth == 30 ~ "30 cm")) %>% 
-    filter(plot != "Control") %>% 
+    #filter(plot != "Control") %>% 
     group_by(plot, depth) %>% 
     #filter(plot == "Freshwater" & depth == 5) %>% 
     mutate(z_raw = (({{var}} - mean({{var}})) / control_sd)) %>% 
