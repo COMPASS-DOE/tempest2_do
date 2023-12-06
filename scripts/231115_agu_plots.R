@@ -30,24 +30,36 @@ coord_sf_crs = "+proj=aea +lat_1=25 +lat_2=50 +lon_0=-100"
 ## Color scheme for plots
 plot_colors <- c("#F0EBD8", "#222E50","#007991")
 
+cb_bbox <- c(xmin = -77.8, xmax = -74.5, ymin = 36.8, ymax = 40.2)
+
 # 1. US map
 us <- ne_states(country = "united states of america", 
                 returnclass = "sf") %>% 
-  filter(name_en != "Alaska" & name_en != "Hawaii")
+  st_crop(., y = cb_bbox)
+  #filter(name_en != "Alaska" & name_en != "Hawaii") 
 
-gcrew <- tibble(name = "gcrew", 
+gcrew <- tibble(name = "TEMPEST", 
                 lat = 38.87392, 
                 long = -76.55206) %>% 
   st_as_sf(coords = c("long", "lat"), crs = common_crs)
 
-
 ggplot() + 
   geom_sf(data = us, fill = "gray90", color = "black") + 
-  geom_sf(data = gcrew, size = 4, color = "white") + 
-  geom_sf(data = gcrew, size = 2.5) + 
-  coord_sf(crs = coord_sf_crs) + 
+  geom_sf_label_repel(data = us, aes(label = name_en), 
+                      size = 4,
+                      #nudge_x = -0.0, nudge_y = -0.1, size = 5,
+                      force = 2) + 
+  geom_sf_label_repel(data = gcrew, aes(label = name), fill = "lightblue", 
+                      size = 6,
+                      nudge_x = 0.2, nudge_y = 0.4) + 
+  geom_sf(data = gcrew, size = 6, color = "white") + 
+  geom_sf(data = gcrew, size = 4, color = "blue") + 
+  #coord_sf(crs = coord_sf_crs) + 
   theme_map()
-ggsave("figures/agu/1_conus.pdf", width = 4, height = 3)
+ggsave("figures/agu/1_conus.pdf", width = 5, height = 7)
+
+
+
 
 # 2. Plots 
 fw_coords <- read_csv("data/metadata/TEMPEST_FW_Grid_LatLong.csv")
@@ -163,11 +175,14 @@ ggplot() +
 ggsave("figures/agu/2_plots.pdf", width = 4, height = 5)
 
 
+
 # 3. Precip and VWC time-series ------------------------------------------------
 
 ## First, bring in TEROS data and set time-zone
 teros <- read_csv("data/231102_teros_final.csv") %>% 
-  mutate(datetime_est = with_tz(datetime, tzone = common_tz)) #%>% 
+  mutate(datetime_est = with_tz(datetime, tzone = common_tz)) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
   #label_flood_periods() %>% 
   #mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood"))
 
@@ -183,48 +198,53 @@ teros %>%
 
 ## Based on Slack, each flooding event was equivalent to ~ 6", so spread 6" over
 ## 8 hours and build a time-series (6 in ~ 15 cm)
+
+#Based on wg-tempest Slack, average of 307k L. We'll round to 300k.
+avg_gallons <- mean(81264, 81206, 80811, 80800)
+avg_liters = avg_gallons * 3.78541
+
 flood_ts <- tibble(datetime_est = seq(from = min(teros$datetime_est), 
                                       to = max(teros$datetime_est), 
                                       by = "5 min"), 
-                   rain_in = 0) %>% 
-  mutate(rain_cm = case_when(datetime_est >= dump_start1 & 
-                               datetime_est <= dump_end1 ~ 15 / (10*12), 
+                   rain_l = 0) %>% 
+  mutate(water_l = case_when(datetime_est >= dump_start1 & 
+                               datetime_est <= dump_end1 ~ 300000 / (10*12), # 15 / (10*12), 
                              datetime_est >= dump_start2 & 
-                               datetime_est <= dump_end2 ~ 15 / (10*12),
-                             TRUE ~ rain_in)) %>% 
-  mutate(c_rain_cm = cumsum(rain_cm), 
+                               datetime_est <= dump_end2 ~ 300000 / (10*12), # 15 / (10*12),
+                             TRUE ~ rain_l)) %>% 
+  mutate(c_water_l = cumsum(water_l), 
          flood = case_when(datetime_est >= dump_start1 & 
                              datetime_est <= dump_end1 ~ "Flood #1", 
                            datetime_est >= dump_start2 & 
                              datetime_est <= dump_end2 ~ "Flood #2",
                            TRUE ~ NA))
   
-## Make a rainfall plot
-plot_rain <- ggplot(flood_ts, aes(datetime_est, rain_cm * 12)) + 
-  geom_area(alpha = 0.1) + 
-  geom_line() + 
-  geom_area(data = flood_ts %>% 
-              filter(flood == "Flood #1"), alpha = 0.1, fill = "blue") + 
-  geom_area(data = flood_ts %>% 
-              filter(flood == "Flood #2"), alpha = 0.1, fill = "blue") + 
-  labs(x = "", y = "Flood rate (cm/hr)")
+## Make a rainfall plot. 
+# plot_rain <- ggplot(flood_ts, aes(datetime_est, c_water_l)) + 
+#   geom_area(alpha = 0.1) + 
+#   geom_line() + 
+#   geom_area(data = flood_ts %>% 
+#               filter(flood == "Flood #1"), alpha = 0.1, fill = "blue") + 
+#   geom_area(data = flood_ts %>% 
+#               filter(flood == "Flood #2"), alpha = 0.1, fill = "blue") + 
+#   labs(x = "", y = "Water added (L)")
 
 
 ## Make a cumulative rainfall plot
-plot_rain_c <- ggplot(flood_ts, aes(datetime_est, c_rain_cm)) + 
+plot_rain_c <- ggplot(flood_ts, aes(datetime_est, c_water_l)) + 
   geom_area(alpha = 0.1) + 
   geom_line() + 
   geom_area(data = flood_ts %>% 
               filter(flood == "Flood #1"), alpha = 0.1, fill = "blue") + 
   geom_area(data = flood_ts %>% 
               filter(flood == "Flood #2"), alpha = 0.1, fill = "blue") + 
-  annotate(geom = "text", x = as_datetime("2023-06-05 04:00:00"), y = 7.5, 
-           label = "Flood #1: 15 cm in 10 hrs") + 
-  annotate(geom = "text", x = as_datetime("2023-06-06 04:00:00"), y = 22.5, 
-           label = "Flood #2: 15 cm in 10 hrs") + 
+  annotate(geom = "text", x = as_datetime("2023-06-05 04:00:00"), y = 150000, 
+           label = "Flood #1: 300k L in 10 hrs") + 
+  annotate(geom = "text", x = as_datetime("2023-06-06 04:00:00"), y = 450000, 
+           label = "Flood #2: 300k L in 10 hrs") + 
   scale_x_datetime(expand = c(0, 0)) + 
-  scale_y_continuous(limits = c(0, 35), expand = c(0, 0)) + 
-  labs(x = "", y = "Flooding (cm)")
+  scale_y_continuous(limits = c(0, 620000), expand = c(0, 0)) + 
+  labs(x = "", y = "Water added (L)")
 
 
 #4. Make TEROS VWC plot --------------------------------------------------------
@@ -244,7 +264,7 @@ p_vwc <- ggplot(teros, aes(datetime_est, depth)) +
   facet_wrap(~plot, ncol = 1) + 
   scale_x_datetime(expand = c(0,0)) + 
   scale_y_reverse(expand = c(0,0)) + 
-  labs(x = "", y = "Depth (cm)", fill = "VWC (m3/m3)") + 
+  labs(x = "", y = "Depth (cm)", fill = bquote("VWC (m"^{3}/m^{3}*")")) + 
   theme(strip.background = element_rect(fill = "gray70"))
 
 ## Pull label
@@ -272,6 +292,8 @@ ggsave("figures/agu/3_rain_and_vwc.pdf",
        width = contour_width, height = contour_height * 1.3)
 
 
+
+
 ggplot(teros, aes(datetime_est, vwc, color = as.factor(depth))) + 
   geom_line() + 
   facet_wrap(~plot, ncol = 1)
@@ -280,7 +302,9 @@ ggplot(teros, aes(datetime_est, vwc, color = as.factor(depth))) +
 # 6. Create DO contour plot ----------------------------------------------------
 
 firesting <- read_csv("data/230712_firesting.csv") %>% 
-  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) #%>% 
+  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
   #label_flood_periods %>% 
   #mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood"))
 
@@ -307,15 +331,20 @@ ggsave("figures/agu/4_do.pdf",
 # 7. Create anoxia / rates bar charts ------------------------------------------
 
 anoxia_by_plot_and_depth <- read_csv("data/231116_anoxia_by_plot_and_depth.csv") %>% 
-  filter(period_relabel != "Pre-Flood")
+  filter(period_relabel != "Pre-Flood") %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
 
-do_rates <- read_csv("data/231116_do_consumption_rates.csv")
+do_rates <- read_csv("data/231116_do_consumption_rates.csv") %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
 
-rate_stats <- read_csv("data/231116_rate_stats.csv") 
+rate_stats <- read_csv("data/231116_rate_stats.csv") %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
 
 ## Set up a color palette that differs from viridis
 depth_colors <- c("#90be6d", "#43aa8b", "#4d908e", "#577590")
-
 
 
 ## Make bar-plots for summary stats
@@ -395,6 +424,8 @@ ggsave("figures/agu/5_do_stats.pdf",
 
 swap <- read_csv("data/230618_swap_redox_raw.csv") %>% 
   mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot)) %>% 
   #label_flood_periods() %>% 
   # mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood")) %>% 
   rename("depth" = depth_cm) %>% 
@@ -421,6 +452,9 @@ ggplot(swap, aes(datetime_est, depth)) +
   theme(strip.background = element_rect(fill = "gray70"))
 ggsave("figures/agu/6_redox.pdf", 
        width = contour_width, height = contour_height)
+
+ggsave("figures/agu/6_redox_tall.pdf", 
+       width = contour_width * .5, height = contour_height)
 
 swap %>% 
   drop_na() %>% 
