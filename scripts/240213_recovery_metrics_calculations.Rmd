@@ -1,0 +1,179 @@
+---
+title: "Figuring out recovery metrics"
+author: "Peter Regier"
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      message = F, 
+                      warning = F)
+```
+
+## Purpose
+
+There are many different ways to calculate the disturbance/recovery metrics we're after, and it's good for things to be clear and explained, and I'm struggling to remember why we're making the decisions we are, and I'm also going rouge a little bit, so this RMD is here to (hopefully) 1) identify the stats choices, 2) defend them (easier for methods later too), and then 3) give a full example, ending up with a function that I can use elsewhere. Note that inspiration comes from TSLA code: <https://github.com/COMPASS-DOE/tempest-system-level-analysis/blob/recovery-rate-bounds/scripts/tmp_test_functions.R>. I didn't read super carefully, so I might have missed something. I'm going to ***bold things where I am unsure***
+
+## Example data
+
+I'll use VWC from TEROS for TEMPEST2 (2023) which I've trimmed to the date range with good DO and redox data for my TEMPEST2 paper. Data look like so:
+
+```{r script setup}
+## First, load setup script to set up environment
+source("../scripts/0_0_setup.R")
+```
+
+```{r read in teros data}
+## Read in TEROS dataset
+teros <- read_csv("../data/231102_teros_final.csv") %>% 
+  mutate(datetime_est = with_tz(datetime, tzone = common_tz)) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
+
+ggplot(teros, aes(datetime_est, vwc, color = as.factor(depth))) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+```
+
+## Step 1: z-score normalize
+
+The first decision is to z-score normalize our treatment plots to the standard deviation of the Control plot, which I'm interpreting as scaling the variability of treatment plots (i.e., disturbance response) to the variability of the Control plot (i.e., natural variability). One decision here is since I have multiple depths, I'm calculating the standard deviation for each For clarity, here's that:
+
+```{r calculate zscore, echo = T}
+
+## This is the SD of the Control for raw (non-zscore-normalized) data
+sd_control <- teros %>% 
+  filter(plot == "Control") %>% 
+  group_by(depth) %>% 
+  summarize(sd = sd(vwc, na.rm = T)) %>% 
+  ungroup() %>% 
+  summarize(sd = max(sd)) %>% # Use max to capture maximum variability in the control plot
+  pull(sd)
+
+z_teros <- teros %>%
+  group_by(plot, depth) %>% 
+  mutate(zscore = (vwc - mean(vwc, na.rm = TRUE)) / sd_control)
+```
+
+```{r Plot zscore}
+ggplot(z_teros, aes(datetime_est, zscore, color = as.factor(depth))) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+
+```
+
+## Step 2: Calculate Vpre
+
+Next, we need to do two things. First, we're basing our disturbed/recovered bounds off of Vpre (which I'm going to define as the 24 hours preceeding the start of the first flood). So we need to calculate that. And in order to keep things apples-to-apples, we need to calculate the SD of control again, but on z-score-normalized data. Fortunately, because of how z-scores are calculated here, the SD for control for normalized data is always going to be exactly 1.
+
+```{r calc zscore control sd}
+
+## I'm putting this calculation here, but should always be 1.
+z_control_sd <- z_teros %>% 
+  filter(plot == "Control") %>% 
+  group_by(depth) %>% 
+  summarize(sd = sd(zscore, na.rm = T)) %>% 
+  ungroup() %>% 
+  summarize(sd = max(sd)) %>% # Use max to capture maximum variability in the control plot
+  pull(sd)
+```
+
+```{r calculate vpre, echo = T}
+events_start <- as_datetime("2023-06-06 05:00:00", tz = common_tz)
+
+vpre <- z_teros %>% 
+  group_by(plot, depth) %>% 
+  mutate(vpre = case_when(datetime_est > events_start - hours(24) & 
+                            datetime_est < events_start ~ "Vpre", 
+                          TRUE ~ NA)) %>% 
+  filter(vpre == "Vpre") %>% 
+  ungroup() %>% 
+  group_by(plot) %>% 
+  summarize(vpre_max = max(zscore)) # Again, taking the max since we want to be conservative
+```
+
+## Step 3: Plot data with disturbance bounds
+
+```{r}
+## Making a multiplier here so it's easy to play around with 1x or 3x
+multiplier = 1
+
+z_teros %>% 
+  inner_join(vpre, by = "plot") %>% 
+  mutate(upper = vpre_max + 1 * multiplier,  # 1 = SD of z-score Control
+         lower = vpre_max - 1 * multiplier) %>%  # 1 = SD of z-score Control
+  ggplot(aes(datetime_est, zscore, color = as.factor(depth))) + 
+  geom_line() + 
+  geom_hline(aes(yintercept = upper)) + 
+  geom_hline(aes(yintercept = lower), linetype = "dashed") + 
+  facet_wrap(~plot, ncol = 1)
+```
+
+## Function and check {.tabset} 
+
+I *think* this makes sense, and for the easy one (VWC) it looks good. So here's my function that way less generalized but hopefully makes the same decisions in the same order. Let's run for VWC to make sure it matches, and for EC to make sure it generalizes: 
+
+```{r make function, echo = T}
+
+## Function inputs: data = dataset, var = variable
+plot_recovery <- function(data, var){
+  
+  ## 1. Calculate SD of the Control plot for raw (non-zscore-normalized) data
+  sd_control <- data %>% 
+    filter(plot == "Control") %>% 
+    group_by(depth) %>% 
+    summarize(sd = sd({{var}}, na.rm = T)) %>% 
+    ungroup() %>% 
+    summarize(sd = max(sd)) %>% # Use max to capture maximum variability in the control plot
+    pull(sd)
+  
+  ## 2. Calculate z-scores for var based on sd_control
+  z_data <- data %>%
+    group_by(plot, depth) %>%
+    mutate(zscore = ({{var}} - mean({{var}}, na.rm = TRUE)) / sd_control) %>% 
+    select(datetime_est, zscore)
+  
+  ## 3. Set when the events start for Vpre calculation
+  events_start <- as_datetime("2023-06-06 05:00:00", tz = common_tz)
+  
+  ## 4. Calculate Vpre for centering disturbance bounds
+  vpre <- z_data %>% 
+    group_by(plot, depth) %>% 
+    mutate(vpre = case_when(datetime_est > events_start - hours(24) & 
+                              datetime_est < events_start ~ "Vpre", 
+                            TRUE ~ NA)) %>% 
+    filter(vpre == "Vpre") %>% 
+    ungroup() %>% 
+    group_by(plot) %>% 
+    summarize(vpre_mean = mean(zscore)) 
+  
+  ## 5. Set multiplier (how many standard deviations?)
+  multiplier = 1
+  
+  ## 6. Bind data and make plot
+  z_data %>% 
+    inner_join(vpre, by = "plot") %>% 
+    mutate(upper = vpre_mean + 1 * multiplier,  # 1 = SD of z-score Control
+           lower = vpre_mean - 1 * multiplier) %>%  # 1 = SD of z-score Control
+    ggplot(aes(datetime_est, zscore, color = as.factor(depth))) + 
+    geom_line() + 
+    geom_hline(aes(yintercept = upper)) + 
+    geom_hline(aes(yintercept = lower), linetype = "dashed") + 
+    facet_wrap(~plot, ncol = 1, scales = "free_y")
+}
+```
+
+### Plot VWC
+```{r}
+plot_recovery(teros, vwc)
+```
+
+### Plot EC
+```{r}
+plot_recovery(teros, ec)
+```
+
+
+
+

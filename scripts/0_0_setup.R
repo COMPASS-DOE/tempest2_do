@@ -45,6 +45,10 @@ common_tz = "Etc/GMT+5"
 pre_event_start = as.POSIXct("2023-06-02 00:00", tz = common_tz)
 post_event_end = as.POSIXct("2023-06-11 23:55", tz = common_tz)
 
+## Tighter bounds based on Firesting data
+event_start = as.POSIXct("2023-06-05 00:00:00", tz = common_tz)
+event_end = as.POSIXct("2023-06-12 00:00:00", tz = common_tz)
+
 ## Set timestamps to mark the start of each flood event. Note that events started
 ## at 6am EDT, but all timezones are in EST
 dump_start1 = as.POSIXct("2023-06-06 05:00", tz = common_tz)
@@ -59,7 +63,7 @@ median_ <- function(var){median({{var}}, na.rm = T)}
 ## Helper function to label pre-determined time-periods 
 label_flood_periods <- function(data){ 
   data %>% 
-    mutate(datetime = force_tz(datetime, tz = common_tz)) %>% 
+    mutate(datetime = force_tz(datetime_est, tz = common_tz)) %>% 
     mutate(period = case_when(datetime >= dump_start1 - hours(24) & datetime < dump_start1 ~ "0_preflood", 
                               datetime >= dump_start1 & datetime < dump_start2 ~ "1_flood1", 
                               datetime >= dump_start2 & datetime < dump_start2 + hours(24) ~ "2_flood2", 

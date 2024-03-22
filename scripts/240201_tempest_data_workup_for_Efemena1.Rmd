@@ -1,0 +1,170 @@
+---
+title: "TEMPEST2 data workup for Efemena part 1"
+output: html_document
+date: "2024-02-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,
+                      warning = F,
+                      message = F)
+```
+
+```{r}
+# 1. Setup ---------------------------------------------------------------------
+
+## First, load setup script to set up environment
+source("../scripts/0_0_setup.R")
+
+
+## We're also going to standardize how we write out our datasets so that things
+## are consistent
+
+write_data_to_csv <- function(data, name){
+  
+  data_final <- data %>% 
+    mutate(datetime_est = as.character(datetime_est))
+  
+  write_csv(data_final, paste0("../data/for_efemena/", name, "_data.csv"))
+}
+
+```
+
+## Background:
+
+Efemena has requested data for **June 5 - December 2023** for **soil moisture (TEROS), redox, DO, and weather**, preferably **depth-resolved**.
+
+Specifically for the TEROS, Freshwater grid-cells to pull are H6, C3, C5, C6, and Estuarine grid-cells to pull are C3, H3, H4, and H6.
+
+This request will require four separate steps (ordered easiest to hardest):
+
+1.  Pull in, prep, and clean Firesting datasets
+2.  Pull in, prep, and clean SWAP datasets
+3.  Pull in weather data for the time-period (not in this script)
+4.  Pull in TEROS data, filter to requested grid cells, then clean (not in this script)
+
+TBD: flag or remove sus data, esp TEROS?
+
+
+## Firesting
+
+I'm using a previous workup of these data
+
+```{r Import Firesting data}
+
+firesting <- read_csv("../data/230712_firesting.csv") %>% 
+  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
+  select(-c(datetime_raw, datetime, temp_c))
+
+p_do <- ggplot(firesting, aes(datetime_est, do_percent_sat, color = as.factor(depth))) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+
+ggplotly(p_do)
+
+write_data_to_csv(firesting, "firesting")
+
+```
+
+
+## Redox
+
+I'm also using a previous work-up for this
+
+```{r SWAP data}
+
+## Code poached from 231204_redox_prep_decisions
+
+read_swap <- function(path){
+  read_delim(path, skip = 1) %>% 
+    slice(3:n()) %>% 
+    mutate(across(c(contains("Batt"), contains("Redox")), as.numeric)) %>% 
+    clean_names() %>% 
+    mutate(datetime = lubridate::as_datetime(timestamp, tz = common_tz)) 
+}
+
+
+swap_list <- list.files(path = "../data/swap", pattern = ".dat", full.names = "T")
+
+control <- read_swap(swap_list[grepl("81", swap_list)]) %>% 
+  mutate(plot = "Control")
+fw <- read_swap("../data/swap/CR1000_2_Table1.dat") %>% 
+  mutate(plot = "FW")
+sw <- read_swap(swap_list[grepl("83", swap_list)]) %>% 
+  mutate(plot = "SW")
+
+set_depths <- function(data){
+  data %>% 
+    pivot_longer(cols = contains("redox_"), names_to = "sensor", values_to = "redox_mv") %>% 
+    separate(sensor, into = c("scrap", "ref", "sensor"), sep = "_") %>% 
+    mutate(depth_cm = case_when(sensor == "1" | sensor == "5" | sensor == "9" | sensor == "13" | sensor == "17" ~ 5, 
+                             sensor == "2" | sensor == "6" | sensor == "10" | sensor == "14" | sensor == "18" ~ 15, 
+                             sensor == "3" | sensor == "7" | sensor == "11" | sensor == "15" | sensor == "19" ~ 30, 
+                             sensor == "4" | sensor == "8" | sensor == "12" | sensor == "16" | sensor == "20" ~ 50,
+                             TRUE ~ 0)) %>% 
+    select(-c(statname, scrap, timestamp))
+}
+
+swap_raw <- bind_rows(set_depths(control), 
+                set_depths(fw), 
+                set_depths(sw)) %>% 
+  filter(datetime >= pre_event_start & 
+           datetime <= post_event_end) 
+
+# Because FW record starts before Control/SW, trim to match
+sw_start <- min(swap_raw %>% filter(plot == "SW") %>% pull(datetime))
+
+swap_trimmed <- swap_raw %>% 
+  filter(datetime >= sw_start)
+
+## We're also filtering to just the first ref probe based on early issues with rb
+swap_binned <- swap_trimmed %>% 
+  group_by(datetime, depth_cm, ref, plot) %>% 
+  summarize(batt_v = mean(batt_v), 
+            redox_mv = mean(redox_mv)) %>% 
+  filter(ref == "ra") %>% 
+  mutate(datetime_raw = as.character(datetime)) %>% 
+  mutate(plot = case_when(plot == "FW" ~ "Freshwater", 
+                          plot == "SW" ~ "Seawater", 
+                          TRUE ~ plot)) 
+
+swap_gapfilled <- swap_binned %>% 
+  ungroup() %>% 
+  group_by(depth_cm, plot) %>% 
+  mutate(redox_mv = ifelse(redox_mv == 0, NA, redox_mv)) %>% 
+  tidyr::fill(redox_mv, .direction = "updown")
+
+join_cols = c("datetime", "plot", "depth_cm")
+
+teros <- read_csv("../data/231102_teros_final.csv") %>%  
+  mutate(datetime = force_tz(datetime, tzone = common_tz)) %>% 
+  rename("depth_cm" = depth) %>% 
+  select(all_of(join_cols), tsoil) %>%
+  group_by(datetime, plot) %>% 
+  complete(depth_cm = c(5, 15, 30, 50), fill = list(tsoil = NA)) %>% 
+  fill(tsoil, .direction = "down")
+
+swap_cor <- swap_gapfilled %>% 
+  left_join(teros, by = c(join_cols)) %>% 
+  mutate(eh_mv = redox_mv - (tsoil * .718) + 224.41) %>%
+  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
+  select(datetime_est, depth_cm, plot, eh_mv) %>% 
+  drop_na()
+
+p_swap <- ggplot(swap_cor, aes(datetime_est, eh_mv, color = as.factor(depth_cm))) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+
+ggplotly(p_swap)
+
+write_data_to_csv(swap_cor, "swap_redox")
+
+```
+
+To keep things light, I'm going to split the data workup in two, esp since these two data types needed to be worked up manually, and I'll be working from L1 data on GDrive for the other two.
+
+
+
+
+
+

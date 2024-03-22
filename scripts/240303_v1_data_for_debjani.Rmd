@@ -1,0 +1,91 @@
+---
+title: "240303_v1_data_for_debjani"
+author: "PR"
+date: "2024-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      message = F, 
+                      warning = F)
+```
+
+## Intro to data
+
+Hi! I'm attaching three datasets, and will briefly describe them here to hopefully answer any initial questions you might have about them. First is TEROS, which are soil sensors deployed at three depths (5, 15, and 30 cm) that measure soil temperature, electrical conductivity and volumetric water content. TEROS are permanently deployed, collect data year-round, and are in multiple grid cells across each plot. The second is Firesting, w and which are a single nest of sensors in one grid cell per plot deployed opporutistically immediately prior to flooding events, and removed soon after. Firestings measure dissolved oxygen in the soil at 5, 10, 20, and 30 cm in treatment plots. SWAP sensors, which measure redox potential, are deployed in the same way and locations as Firestings, except they are at 5, 15, 30, and 50cm depths. 
+
+
+
+
+```{r read in data}
+
+# 1. Setup ---------------------------------------------------------------------
+
+## First, load setup script to set up environment
+source("../scripts/0_0_setup.R")
+
+p_load(scales)
+
+
+# 2. Read in data --------------------------------------------------------------
+
+## First, bring in TEROS data and set time-zone
+teros <- read_csv("../data/231102_teros_final.csv") %>% 
+  mutate(datetime_est = with_tz(datetime, tzone = common_tz)) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
+
+firesting <- read_csv("../data/230712_firesting.csv") %>% 
+  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot))
+
+swap <- read_csv("../data/230618_swap_redox_raw.csv") %>% 
+  mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot)) %>% 
+  rename("depth" = depth_cm) %>% 
+  #filter(!(plot == "Control" & depth == 5)) %>% # Filter out so it's comparable to VWC/DO
+  filter(!(plot == "Control" & redox_mv == 0)) %>% # manually remove errors
+  filter(!(plot == "Seawater" & redox_mv == 0)) %>% 
+  filter(!is.na(eh_mv))
+
+```
+
+## Plots {.tabset}
+
+### TEROS VWC
+
+```{r VWC plot}
+teros %>% 
+  ggplot(aes(datetime_est, vwc, color = as.factor(depth))) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+```
+
+
+
+### Firesting DO
+
+```{r DO plot}
+ firesting %>%
+  ggplot(aes(datetime_est, do_percent_sat, color = as.factor(depth))) +
+  geom_line() +
+  facet_wrap(~plot, ncol = 1)
+```
+
+
+### SWAP Eh
+
+```{r Eh plot}
+ swap %>% 
+  ggplot(aes(datetime_est, eh_mv, color = as.factor(depth))) +
+  geom_line() +
+  facet_wrap(~plot, ncol = 1)
+```
+
+
+
+
+

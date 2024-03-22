@@ -1,0 +1,77 @@
+---
+title: "Prep TEROS data"
+author: "PR"
+date: "2024-03-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      message = F, 
+                      warning = F)
+```
+
+### General purpose
+
+I'm creating Rmds for each of the datastreams used in this project. TEROS data are relatively simple to ingest because they're pulled from GDrive which is already formatted. However, because there are so many TEROS sensors, there's a significant amount of quality control to document and justify.
+
+### Teros deployment
+
+We deployed a total of XX Teros sensors across the plots as part of the intial TEMPEST setup. All three plots are outfitted with similar TEROS deployments, where many different grid cells have TEROS sensors at 15 cm, and a subset of grid cells have sensors at 5/15/30 cm. It gets a little tricky to include all sensors since some sensors are intermittent, so there's some significant QC efforts that go into data prep
+
+```{r Setup}
+## First, load setup script to set up environment
+
+source("../scripts/0_0_setup.R")
+
+```
+
+```{r Read in data}
+
+# 2. Pull in data and format ---------------------------------------------------
+
+## Set paths for current and archived loggernet data (will replace with strings once 
+## all relevant data are in archive)
+teros_path_current <- "../Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Current_data"
+teros_path_archive <- "../Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Loggernet_Rawdata_Archive"
+
+## Create the list of files to read
+teros_list_all <- list.files(teros_path_archive, "Terosdata", full.names = T)[grepl("202306|202307", list.files(teros_path_archive, "Terosdata"))]
+
+## Set up a function to read in data
+read_teros <- function(filename){
+  
+  message(paste("Reading", filename))
+  
+  read_delim(file = filename, skip = 1) %>% 
+    slice(3:n()) %>% 
+    clean_names() %>% 
+    gather(channel, value, -timestamp, -record, -statname) %>%
+    mutate(datetime = force_tz(parsedate::parse_date(timestamp), tz = common_tz)) %>% 
+    separate(statname, into = c("inst", "data_logger_id"), sep = "_") %>% 
+    select(-inst, -timestamp) %>%
+    mutate(channel = str_replace(channel, "teros_", "")) %>% 
+    separate(channel, into = c("terosdata_table_channel", "variable"), sep = "_") %>% 
+    mutate(variable = as.integer(gsub(")", "", variable, fixed = TRUE)),
+           # Give them sensible names
+           variable = case_when(variable == 1 ~ "vwc",
+                                variable == 2 ~ "tsoil",
+                                variable == 3 ~ "ec"), 
+           value = as.numeric(value)) 
+}
+
+## Also need the table to match plot and grid to channel and logger
+teros_table <- read_csv("../Users/regi350/Downloads/TEROS_Network_Location copy.csv") %>% 
+  clean_names() %>% 
+  mutate(data_logger_id = as.character(data_logger_id),
+         terosdata_table_channel = as.character(terosdata_table_channel))
+
+## We now need to split our files by resolution
+teros_list_5min <- teros_list_all[grepl("_5min_", teros_list_all)]
+teros_list_15min <- teros_list_all[!(grepl("_5min_", teros_list_all))]
+
+teros_list_5min
+```
+
+
+

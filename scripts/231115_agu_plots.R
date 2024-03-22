@@ -11,6 +11,8 @@
 ## First, load setup script to set up environment
 source("scripts/0_0_setup.R")
 
+p_load(scales)
+
 ## Prototyping a custom ggplot theme
 theme_agu <- theme(
   #https://emanuelaf.github.io/own-ggplot-theme.html
@@ -243,7 +245,9 @@ plot_rain_c <- ggplot(flood_ts, aes(datetime_est, c_water_l)) +
   annotate(geom = "text", x = as_datetime("2023-06-06 04:00:00"), y = 450000, 
            label = "Flood #2: 300k L in 10 hrs") + 
   scale_x_datetime(expand = c(0, 0)) + 
-  scale_y_continuous(limits = c(0, 620000), expand = c(0, 0)) + 
+  scale_y_continuous() + 
+  scale_y_continuous(limits = c(0, 620000), expand = c(0, 0), 
+                     labels = c("0", "2e5", "4e5", "6e5")) + 
   labs(x = "", y = "Water added (L)")
 
 
@@ -308,7 +312,6 @@ firesting <- read_csv("data/230712_firesting.csv") %>%
   #label_flood_periods %>% 
   #mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood"))
 
-
 ggplot(firesting, aes(datetime_est, depth)) + 
   geom_contour_filled(aes(z = do_percent_sat), bins = 10) + 
   geom_point(data = firesting %>% filter(do_percent_sat < 1), color = "orange", alpha = 0.5, size = 0.5) + 
@@ -322,7 +325,7 @@ ggplot(firesting, aes(datetime_est, depth)) +
   scale_x_datetime(expand = c(0,0)) + 
   scale_y_reverse(expand = c(0,0)) + 
   scale_fill_viridis_d(direction = -1) + 
-  labs(x = "", y = "Depth (cm)", fill = "DO (%)") + 
+  labs(x = "", y = "Depth (cm)", fill = "DO (% Sat)") + 
   theme(strip.background = element_rect(fill = "gray70"))
 ggsave("figures/agu/4_do.pdf", 
        width = contour_width, height = contour_height)
@@ -449,7 +452,9 @@ ggplot(swap, aes(datetime_est, depth)) +
   scale_y_reverse(expand = c(0,0)) + 
   scale_fill_viridis_d(direction = -1) + 
   labs(x = "", y = "Depth (cm)", fill = "Eh (mV)") + 
-  theme(strip.background = element_rect(fill = "gray70"))
+  theme(strip.background = element_rect(fill = "gray70"), 
+        legend.position = "right",
+        legend.justification = "top")
 ggsave("figures/agu/6_redox.pdf", 
        width = contour_width, height = contour_height)
 
