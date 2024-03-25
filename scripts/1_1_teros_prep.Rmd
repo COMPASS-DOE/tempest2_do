@@ -28,50 +28,17 @@ source("../scripts/0_0_setup.R")
 
 ```{r Read in data}
 
-# 2. Pull in data and format ---------------------------------------------------
+## We will be using raw data downloaded from the TEMPEST dropbox, since the L1 TEMPEST TEROS data on GDrive have some issues to solve. These data are sourced from an archived script called x_1_1_230710_read_teros.R. Briefly, VWC is calculated as mutate(vwc = 3.879*10^-4 * vwc - 0.6956), and filter(vwc ##>= 0 & ec >= 0 & tsoil >= 0) removes impossible values
 
-## Set paths for current and archived loggernet data (will replace with strings once 
-## all relevant data are in archive)
-teros_path_current <- "../Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Current_data"
-teros_path_archive <- "../Users/regi350/Dropbox (Personal)/TEMPEST_PNNL_Data/Loggernet_Rawdata_Archive"
+## Read in data
+teros_5min_raw <- read_csv("../data/230710_teros_raw_5min.csv") %>% 
+  mutate(datetime_raw = datetime, 
+         datetime = force_tz(datetime, tz = common_tz))
 
-## Create the list of files to read
-teros_list_all <- list.files(teros_path_archive, "Terosdata", full.names = T)[grepl("202306|202307", list.files(teros_path_archive, "Terosdata"))]
+teros_15min_raw <- read_csv("../data/230710_teros_raw_15min.csv")  %>% 
+  mutate(datetime_raw = datetime, 
+         datetime = force_tz(datetime, tz = common_tz))
 
-## Set up a function to read in data
-read_teros <- function(filename){
-  
-  message(paste("Reading", filename))
-  
-  read_delim(file = filename, skip = 1) %>% 
-    slice(3:n()) %>% 
-    clean_names() %>% 
-    gather(channel, value, -timestamp, -record, -statname) %>%
-    mutate(datetime = force_tz(parsedate::parse_date(timestamp), tz = common_tz)) %>% 
-    separate(statname, into = c("inst", "data_logger_id"), sep = "_") %>% 
-    select(-inst, -timestamp) %>%
-    mutate(channel = str_replace(channel, "teros_", "")) %>% 
-    separate(channel, into = c("terosdata_table_channel", "variable"), sep = "_") %>% 
-    mutate(variable = as.integer(gsub(")", "", variable, fixed = TRUE)),
-           # Give them sensible names
-           variable = case_when(variable == 1 ~ "vwc",
-                                variable == 2 ~ "tsoil",
-                                variable == 3 ~ "ec"), 
-           value = as.numeric(value)) 
-}
-
-## Also need the table to match plot and grid to channel and logger
-teros_table <- read_csv("../Users/regi350/Downloads/TEROS_Network_Location copy.csv") %>% 
-  clean_names() %>% 
-  mutate(data_logger_id = as.character(data_logger_id),
-         terosdata_table_channel = as.character(terosdata_table_channel))
-
-## We now need to split our files by resolution
-teros_list_5min <- teros_list_all[grepl("_5min_", teros_list_all)]
-teros_list_15min <- teros_list_all[!(grepl("_5min_", teros_list_all))]
-
-teros_list_5min
 ```
-
 
 
