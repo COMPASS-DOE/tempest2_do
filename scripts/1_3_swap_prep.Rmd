@@ -1,0 +1,149 @@
+---
+title: "SWAP data prep"
+author: "PR"
+date: "2024-03-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      message = F, 
+                      warning = F)
+```
+
+### General purpose
+
+I'm creating Rmds for each of the datastreams used in this project. Because our deployments were a little complex, and both SWAP and Firesting datasets were somewhat cobbled together, it's important to document as many details as possible as clearly as possible in order to streamline QC, clearly ID and explain any data decisions, and make the methods section easy to write.
+
+### SWAP deployment
+
+We deployed a total of 15 SWAP sensor rods and 6 SWAP reference electrodes across the plots for TEMPEST 2 (June 2023). All three plots were outfitted in the same way: 1 nest of 5 SWAP rods with electrodes at 15, 25, 40, and 60 cm in an approximate circle. All rods were installed 10 cm too shallow, so actual measurement depths were at 5, 15, 30, and 50 cm. 5, 15, and 30 cm depths match TEROS, and 5 and 30 cm match Firesting endmembers. As a quick note for TEMPEST 3: we should deploy our DO sensors at 5, 15, 30, and 50 cm to match SWAP (if using swap). Each nest had two reference electrodes deployed across the circle from each other at ~ 10 cm depth. All sensors were controlled via dataloggers powered by isolated circuits (separate batteries), and all times are reported as EST (GMT - 5) as with all other datalogger datasets. 
+
+```{r Setup}
+## First, load setup script to set up environment
+source("../scripts/0_0_setup.R")
+
+```
+
+```{r Read in datasets}
+
+### Notes from Loggernet to keep things straight
+## Control is PB81, logger is labeled CR1000
+## FW is PB82, logger is labeled CR1000_2
+## SW is PB83, logger is labeled CR1000_3
+
+read_swap <- function(path){
+  read_delim(path, skip = 1) %>% 
+    slice(3:n()) %>% 
+    mutate(across(c(contains("Batt"), contains("Redox")), as.numeric)) %>% 
+    clean_names() %>% 
+    mutate(datetime = lubridate::as_datetime(timestamp, tz = common_tz)) 
+}
+
+swap_list <- list.files(path = "../data/raw_data/swap/", pattern = ".dat", full.names = "T")
+
+control <- read_swap(swap_list[grepl("81", swap_list)]) %>%
+  mutate(plot = "Control")
+
+fw <- read_swap("../data/raw_data/swap/CR1000_2_Table1.dat") %>%
+  mutate(plot = "Freshwater")
+
+sw <- read_swap(swap_list[grepl("83", swap_list)]) %>%
+  mutate(plot = "Estuarine")
+```
+
+
+```{r merge and label depths}
+
+set_depths <- function(data){
+  data %>% 
+    pivot_longer(cols = contains("redox_"), names_to = "sensor", values_to = "redox_mv") %>% 
+    separate(sensor, into = c("scrap", "ref", "sensor"), sep = "_") %>% 
+    mutate(depth_cm = case_when(sensor == "1" | sensor == "5" | sensor == "9" | sensor == "13" | sensor == "17" ~ 5, 
+                             sensor == "2" | sensor == "6" | sensor == "10" | sensor == "14" | sensor == "18" ~ 15, 
+                             sensor == "3" | sensor == "7" | sensor == "11" | sensor == "15" | sensor == "19" ~ 30, 
+                             sensor == "4" | sensor == "8" | sensor == "12" | sensor == "16" | sensor == "20" ~ 50,
+                             TRUE ~ 0)) %>% 
+    select(-c(statname, scrap, timestamp))
+}
+  
+df_raw <- bind_rows(set_depths(control), 
+                    set_depths(fw), 
+                    set_depths(sw)) %>% 
+  filter(datetime > pre_event_start & 
+           datetime < post_event_end)
+
+ggplot(df_raw, aes(datetime, redox_mv, group = sensor, color = ref)) + 
+  geom_line() + 
+  facet_grid(plot~depth_cm)
+```
+
+## Because Control looks weird, let's zoom in, I'm not quite sure why the data look the way they do, but when separate by reference electrode, data look fine
+
+```{r}
+df_raw %>% 
+  filter(plot == "Control" & depth_cm == 15) %>% 
+  ggplot(aes(datetime, redox_mv, group = sensor, color = ref)) + 
+  geom_line() + 
+  facet_wrap(~ref, nrow = 1)
+```
+### QC
+
+#### QC Step 1: Picking a reference electrode {.tabset}
+
+There are two reference electrodes in each plot, and they should theoretically be reading the same thing. Electrode measurements are useless without the reference electrode, so it's up to us to figure out which reference electrode is most trustworthy for each site. In the example above, it's clear that reference B ('rb') is seeing strong diurnal variability, and is not reading correctly prior to 6/6, while reference A is doing about what we'd expect for the Control plot. Let's look at all plots together to determine which reference makes the most sense for each plot. 
+
+##### 5 cm
+```{r}
+
+plot_by_reference_and_depth <- function(depth){
+  df_raw %>% 
+  filter(depth_cm == depth) %>% 
+  ggplot(aes(datetime, redox_mv, group = sensor, color = ref)) + 
+  geom_line() + 
+  facet_wrap(plot~ref, ncol = 2)
+}
+
+plot_by_reference_and_depth(5)
+```
+
+##### 15 cm
+```{r}
+plot_by_reference_and_depth(15)
+```
+
+##### 30 cm
+```{r}
+plot_by_reference_and_depth(30)
+```
+
+##### 50 cm
+```{r}
+plot_by_reference_and_depth(50)
+```
+
+####
+
+Based first on 50 cm, which is the least influenced by flooding (so treatment plots and control plot should be similar patterns), we can see that *Control rb* has different patterns than the other 5 reference-plot combos, so we should use ra in Control. However, it's a little unclear visually how we should decide ra v rb for Estuarine and Freshwater plots. Let's create some plots to compare: 
+
+```{r}
+df_raw %>% 
+  select(datetime, sensor, ref, plot, depth_cm, redox_mv) %>% 
+  group_by(datetime, plot, sensor) %>% 
+  pivot_wider(names_from = ref, values_from = redox_mv) %>% 
+  unnest() %>% 
+  ggplot(aes(ra, rb, color = depth_cm)) + 
+  geom_point() + 
+  facet_wrap(~plot)
+
+
+```
+\n
+
+If we assume that redox should generally fall along the 1:1 line, and that the excursions are diagnostic of less "real" data, it appears that ra generally does "better" than rb. Since we don't have a real ground-truth, we'll go with ra across the board, partially based on the plot above, partially based on simple cross-site consistency.
+
+#### **Decision 1:** Use the **ra** reference
+
+# 
+
+#### QC Step 2: 

@@ -18,17 +18,17 @@ contour_height = 6
 # 2. Read data -----------------------------------------------------------------
 
 ## Read in the three datasets used
-teros <- read_csv("data/231102_teros_final.csv") %>% 
+teros <- read_csv("data/240326_teros_final.csv") %>% 
   mutate(datetime_est = with_tz(datetime, tzone = common_tz)) %>% 
   mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
                           TRUE ~ plot))
 
-firesting <- read_csv("data/230712_firesting.csv") %>% 
+firesting <- read_csv("data/240318_firesting_data_final.csv") %>% 
   mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
   mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
                           TRUE ~ plot))
 
-swap <- read_csv("data/230618_swap_redox_raw.csv") %>% 
+swap <- read_csv("data/ignore/archive/230618_swap_redox_raw.csv") %>% 
   mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
   mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
                           TRUE ~ plot)) %>% 
@@ -58,6 +58,52 @@ flood_ts <- tibble(datetime_est = seq(from = min(teros$datetime_est),
                            datetime_est >= dump_start2 & 
                              datetime_est <= dump_end2 ~ "Flood #2",
                            TRUE ~ NA))
+
+
+# 3.5. Make a combined plot ----------------------------------------------------
+
+make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, fill_lab, legend_width, fill_direction){
+  
+  data_plot <- ggplot(data, aes(datetime_est, depth)) + 
+    geom_contour_filled(aes(z = {{var}}), bins = 10, show.legend = F) + 
+    annotate("rect", xmin = dump_start1, xmax = dump_end1, 
+             ymin = 5, ymax = max_depth, fill = "white", alpha = 0.2) +
+    annotate("rect", xmin = dump_start2, xmax = dump_end2, 
+             ymin = 5, ymax = max_depth, fill = "white", alpha = 0.2) +
+    geom_vline(aes(xintercept = dump_start1), color = "white", linetype = "dashed") + 
+    geom_vline(aes(xintercept = dump_start2), color = "white", linetype = "dashed") + 
+    facet_wrap(~plot, ncol = 1) + 
+    scale_x_datetime(expand = c(0,0)) + 
+    scale_y_reverse(expand = c(0,0)) + 
+    scale_fill_viridis_d(direction = fill_direction) + 
+    labs(x = x_lab, y = y_lab, fill = fill_lab) + 
+    theme(strip.background = element_rect(fill = "gray90"), 
+          axis.text = element_text(size = 14),    # Adjust size of axis labels
+          axis.title = element_text(size = 16),  
+          strip.text = element_text(size = 14)) +  # Remove background from legend
+    theme(panel.background = element_blank(), 
+          plot.background = element_blank())
+  
+  legend_raw <- ggplot(data, aes(datetime_est, depth)) +
+    geom_tile(aes(fill = {{var}})) +
+    facet_wrap(~plot, ncol = 1) + 
+    scale_fill_viridis_c(direction = -1) + 
+    labs(fill = fill_lab) + 
+    theme(legend.background = element_blank())
+  
+  legend <- get_legend(legend_raw)
+  
+  plot_grid(data_plot, legend, rel_widths = c(1, legend_width))
+}
+
+plot_grid(make_contour_plot(teros, vwc, 30, "", "Soil depth (cm)", bquote("VWC (m"^{3}/m^{3}*")"), 0.15, 1),
+          NULL,
+          make_contour_plot(firesting, do_percent_sat, 30, "", "Soil depth (cm)", "DO (% Sat)", 0.15, -1), 
+          NULL,
+          make_contour_plot(swap, eh_mv, 50,  "Datetime", "Soil depth (cm)","Eh (mV)", 0.15, -1),
+          rel_heights = c(1, 0.1, 1, 0.1, 1),
+          ncol = 1) 
+ggsave("figures/ess_pi/240402_timeseries.png", width = 10, height = 20)
 
 
 # 4. Make flood time-series and VWC response plot ------------------------------
@@ -167,5 +213,7 @@ ggplot(firesting, aes(datetime_est, do_percent_sat, linetype = as.factor(depth),
   scale_color_manual(values = c("gray", "orange", "blue")) + 
   labs(x = "", y = "DO (% air sat.)")
 ggsave("figures/ess_pi/do_timeseries.png", width = 4, height = 3)
+
+
 
 

@@ -31,11 +31,11 @@ source("../scripts/0_0_setup.R")
 ## We will be using raw data downloaded from the TEMPEST dropbox, since the L1 TEMPEST TEROS data on GDrive have some issues to solve. These data are sourced from an archived script called x_1_1_230710_read_teros.R. Briefly, VWC is calculated as mutate(vwc = 3.879*10^-4 * vwc - 0.6956), and filter(vwc ##>= 0 & ec >= 0 & tsoil >= 0) removes impossible values
 
 ## Read in data
-teros_5min_raw <- read_csv("../data/230710_teros_raw_5min.csv") %>% 
+teros_5min_raw <- read_csv("../data/raw_data/230710_teros_raw_5min.csv") %>% 
   mutate(datetime_raw = datetime, 
          datetime = force_tz(datetime, tz = common_tz))
 
-teros_15min_raw <- read_csv("../data/230710_teros_raw_15min.csv")  %>% 
+teros_15min_raw <- read_csv("../data/raw_data/230710_teros_raw_15min.csv")  %>% 
   mutate(datetime_raw = datetime, 
          datetime = force_tz(datetime, tz = common_tz))
 

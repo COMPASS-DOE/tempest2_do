@@ -24,8 +24,8 @@ We deployed a total of 11 Firesting sensors across the plots for TEMPEST 2 (June
 source("../scripts/0_0_setup.R")
 
 ## Firesting general paths
-four_channel_path <- "../data/firesting/four_channel/"
-handheld_path <- "../data/firesting/handheld/"
+four_channel_path <- "../data/raw_data/firesting/four_channel/"
+handheld_path <- "../data/raw_data/firesting/handheld/"
 
 ## Set FW paths
 fw1_filepath <- paste0(four_channel_path, "2023-06-04_082732_230604_fw_tempest_1/ChannelData")
@@ -173,12 +173,13 @@ df <- bind_rows(fwsw_data, control_data) %>%
   mutate(do_percent_sat = ifelse(do_percent_sat < 0, 0, do_percent_sat)) %>% 
   mutate(plot = case_when(plot == "FW" ~ "Freshwater", 
                           plot == "SW" ~ "Estuarine", 
-                          TRUE ~ plot))
+                          TRUE ~ plot)) %>% 
+  mutate(datetime_est = as.character(datetime))
 
 ```
 
 ```{r write out final dataset}
-write_csv(df, "../data/240318_firesting.csv")
+write_csv(df, "../data/240318_firesting_data_final.csv")
 ```
 
 
