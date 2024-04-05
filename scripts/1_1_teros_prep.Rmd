@@ -298,7 +298,8 @@ teros_final <- teros_15min_qc4 %>%
   select(contains("filled")) %>%  ## A little tricky with strings here (include "filled")
   summarize(across(where(is.numeric), mean)) %>%
   rename_with(~str_remove(., "_filled"), contains("_filled")) %>% # now exclude "filled"
-  mutate(filled = ifelse(filled > 0, TRUE, FALSE))
+  mutate(filled = ifelse(filled > 0, TRUE, FALSE)) %>% 
+  mutate(datetime_est = as.character(datetime))
 
 write_csv(teros_final, "../data/240326_teros_final.csv")
 ```

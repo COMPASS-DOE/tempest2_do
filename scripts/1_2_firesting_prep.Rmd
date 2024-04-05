@@ -179,7 +179,7 @@ df <- bind_rows(fwsw_data, control_data) %>%
 ```
 
 ```{r write out final dataset}
-write_csv(df, "../data/240318_firesting_data_final.csv")
+write_csv(df, "../data/240318_firesting_final.csv")
 ```
 
 
