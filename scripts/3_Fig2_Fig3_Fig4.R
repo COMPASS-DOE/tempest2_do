@@ -80,8 +80,27 @@ do_plot <- make_contour_plot(firesting, do_percent_sat, 30, "", "Soil depth (cm)
 
 redox_plot <- make_contour_plot(swap, eh_mv, 50,  "Datetime", "Soil depth (cm)", 
                                 "Eh (mV)", 0.15, -1)
+
+
 # 4. Save plots ----------------------------------------------------------------
 
+save_plot <- function(plot_to_save, name_string){
+  
+  ## Set dimensions for plot
+  plot_width = 10
+  plot_height = 6
+  
+  plot_to_save
+  
+  ggsave(paste0("figures/", name_string, "_contour.png"), 
+         width = plot_width, height = plot_height)
+  ggsave(paste0("figures/", name_string, "_contour.pdf"), 
+         width = plot_width, height = plot_height)
+}
+
+save_plot(vwc_plot, "2_vwc")
+save_plot(do_plot, "3_do")
+save_plot(redox_plot, "4_redox")
 
 
 
