@@ -98,8 +98,14 @@ save_plot <- function(plot_to_save, name_string){
          width = plot_width, height = plot_height)
 }
 
+
+vwc_plot
 save_plot(vwc_plot, "2_vwc")
+
+do_plot
 save_plot(do_plot, "3_do")
+
+redox_plot
 save_plot(redox_plot, "4_redox")
 
 

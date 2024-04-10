@@ -23,7 +23,7 @@ teros <- read_csv("data/240326_teros_final.csv") %>%
   mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
                           TRUE ~ plot))
 
-firesting <- read_csv("data/240318_firesting_data_final.csv") %>% 
+firesting <- read_csv("data/240318_firesting_final.csv") %>% 
   mutate(datetime_est = force_tz(datetime, tzone = common_tz)) %>% 
   mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
                           TRUE ~ plot))
@@ -78,9 +78,9 @@ make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, fill_lab, lege
     scale_fill_viridis_d(direction = fill_direction) + 
     labs(x = x_lab, y = y_lab, fill = fill_lab) + 
     theme(strip.background = element_rect(fill = "gray90"), 
-          axis.text = element_text(size = 14),    # Adjust size of axis labels
-          axis.title = element_text(size = 16),  
-          strip.text = element_text(size = 14)) +  # Remove background from legend
+          axis.text = element_text(size = 20),    # Adjust size of axis labels
+          axis.title = element_text(size = 24),  
+          strip.text = element_text(size = 24)) +  # Remove background from legend
     theme(panel.background = element_blank(), 
           plot.background = element_blank())
   
@@ -89,22 +89,24 @@ make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, fill_lab, lege
     facet_wrap(~plot, ncol = 1) + 
     scale_fill_viridis_c(direction = -1) + 
     labs(fill = fill_lab) + 
-    theme(legend.background = element_blank())
+    theme(legend.background = element_blank(), 
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 24))
   
   legend <- get_legend(legend_raw)
   
   plot_grid(data_plot, legend, rel_widths = c(1, legend_width))
 }
 
-plot_grid(make_contour_plot(teros, vwc, 30, "", "Soil depth (cm)", bquote("VWC (m"^{3}/m^{3}*")"), 0.15, 1),
+plot_grid(make_contour_plot(teros, vwc, 30, "", "Soil depth (cm)", bquote("VWC (m"^{3}/m^{3}*")"), 0.18, 1),
           NULL,
-          make_contour_plot(firesting, do_percent_sat, 30, "", "Soil depth (cm)", "DO (% Sat)", 0.15, -1), 
+          make_contour_plot(firesting, do_percent_sat, 30, "", "Soil depth (cm)", "DO (% Sat)", 0.18, -1), 
           NULL,
-          make_contour_plot(swap, eh_mv, 50,  "Datetime", "Soil depth (cm)","Eh (mV)", 0.15, -1),
+          make_contour_plot(swap, eh_mv, 50,  "Datetime", "Soil depth (cm)","Eh (mV)", 0.18, -1),
           rel_heights = c(1, 0.1, 1, 0.1, 1),
           ncol = 1) 
-ggsave("figures/ess_pi/240402_timeseries.png", width = 10, height = 20)
-
+ggsave("figures/ess_pi/240402_timeseries.png", width = 15, height = 30)
+ggsave("figures/ess_pi/240402_timeseries.pdf", width = 15, height = 30)
 
 # 4. Make flood time-series and VWC response plot ------------------------------
 
