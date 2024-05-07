@@ -44,40 +44,13 @@ plot_grid(initial_plots(teros, vwc),
           initial_plots(swap, eh_mv),
           nrow = 1)
 
-## Trying Patrick et al. (2020)'s stats: 
+
+# 3. Calculate and plot resistance ---------------------------------------------
+
+## Based on  Patrick et al. (2020)'s stats: ln(min/max / vpre baseline)
 ## https://doi.org/10.1007/s12237-019-00690-3
-## ln(min/max / vpre baseline)
 
-# 1. Identify vpre and disturbance time-periods
-# 2. calculate values (decide if it's min or max first)
-# 3. Plot VWC, and include control...
-# 4. If it looks weird, try it with the detrended data
-
-vwc_lrr <- teros %>% 
-  mutate(time_period = case_when(datetime_est < as_datetime("2023-06-06 05:00:00", tz = common_tz) ~ "Vpre",
-                                 datetime_est < as_datetime("2023-06-07 15:00:00", tz = common_tz) ~ "Event", 
-                                 TRUE ~ NA)) %>% 
-  ungroup() %>% 
-  group_by(plot, depth) %>%
-  summarize(
-    vpre = mean(vwc[time_period == "Vpre"], na.rm = TRUE),
-    event_min = min(vwc[time_period == "Event"], na.rm = TRUE),
-    event_max = max(vwc[time_period == "Event"], na.rm = TRUE)) %>% 
-  mutate(vdist = ifelse(abs(event_min) > abs(event_max), event_min, event_max), 
-         lrr = log(vdist/vpre))
-
-
-set.seed(123)  # for reproducibility
-
-vwc_lrr %>%
-  ggplot(aes(depth, lrr, fill = plot)) +
-  geom_hline(yintercept = 0, linetype = "dashed") + 
-  geom_col(position = "dodge", alpha = 0.5) + 
-  coord_flip() + 
-  scale_x_reverse() + 
-  labs(x = "Depth (cm)", y = "Log response ratio")
-           
-           
+## Function to calculate log-response ratio and plot it
 calculate_lrr <- function(data, var) {
   # Convert var to string (in case they are passed as bare variable names)
   var <- as.character(substitute(var))
@@ -87,10 +60,6 @@ calculate_lrr <- function(data, var) {
       datetime_est < as_datetime("2023-06-06 05:00:00", tz = common_tz) ~ "Vpre",
       datetime_est < as_datetime("2023-06-07 15:00:00", tz = common_tz) ~ "Event", 
       TRUE ~ NA_character_)) 
-  
-  # ggplot(x, aes(datetime_est, .data[[var]], color = time_period)) + 
-  #   geom_point() + 
-  #   facet_wrap(~plot, ncol = 1)
 
   dodge_width = 5
   
@@ -104,17 +73,8 @@ calculate_lrr <- function(data, var) {
            lrr = log(vdist/vpre)) %>%
     ungroup() %>% 
     complete(plot, depth = c(5, 10, 15, 20, 30, 50), fill = list(vpre = NA, event_min = NA, event_max = NA, vdist = NA, lrr = NA)) %>% 
-    # mutate(plot_num = as.numeric(as.factor(plot))) %>%
-    # ggplot(aes(depth + dodge_width * (plot_num - 1.5), lrr, color = plot)) +
-    # geom_hline(yintercept = 0, linetype = "dashed") +
-    # geom_segment(aes(xend = depth + dodge_width * (plot_num - 1.5), yend = 0)) +
-    # geom_point(size = 3) +
-    # coord_flip() +
-    # scale_x_continuous(breaks = unique(x$depth)) +
-    # labs(x = "Depth (cm)", y = "Log response ratio")
     ggplot(aes(depth, lrr, color = plot)) +
     geom_hline(yintercept = 0, linetype = "dashed") +
-    #geom_col(position = "dodge", alpha = 0.5) +
     geom_linerange(aes(ymin = 0, ymax = lrr), position = position_dodge(width = dodge_width)) +
     geom_point(position = position_dodge(width = dodge_width), size = 3) +
     coord_flip() +
@@ -134,92 +94,74 @@ plot_grid(calculate_lrr(teros, vwc) + theme(legend.position = "none") +
           nrow = 1, rel_widths = c(1, 1, 1, 0.4))
 ggsave("figures/5_Fig5_resistance.png", width = 10, height = 4)
 
-calculate_lrr(teros, vwc)
 
+# 4. Calculate and plot response -----------------------------------------------
 
-lrr_vwc <- calculate_lrr(teros, vwc)
-lrr_ec <- calculate_lrr(teros, ec)
-lrr_do <- calculate_lrr(firesting, do_percent_sat)
+## Also from Patrick et al. (2020) - the number of hours it takes for values to
+## return to baseline (mean of vpre). I'm going to amend this a little and add
+## some wiggle room via standard deviation of vpre as well.
 
-calculate_lrr(firesting, do_percent_sat)
+calculate_response <- function(data, var){
+  
+  # Convert var to string (in case they are passed as bare variable names)
+  var <- as.character(substitute(var))
+  
+  x <- data %>%
+    mutate(time_period = case_when(
+      datetime_est < as_datetime("2023-06-06 05:00:00", tz = common_tz) ~ "Vpre",
+      datetime_est < as_datetime("2023-06-07 15:00:00", tz = common_tz) ~ "Event", 
+      TRUE ~ "Post")) 
+  
+  ## Calculate Vpre stats
+  vpre_stats <- x %>% 
+    ungroup() %>%
+    group_by(plot, depth) %>%
+    summarize(vpre = mean(.data[[var]][time_period == "Vpre"], na.rm = TRUE),
+              vpre_sd = sd(.data[[var]][time_period == "Vpre"], na.rm = TRUE)) 
+  
+  ## Calculate event stats
+  event_stats <- x %>% 
+    ungroup() %>%
+    group_by(plot, depth) %>%
+    filter(time_period == "Event") %>% #which.min doesn't work with var[...] filtering
+    summarize(event_min = min(.data[[var]], na.rm = TRUE),
+              event_max = max(.data[[var]], na.rm = TRUE), 
+              event_min_time = datetime_est[which.min(.data[[var]])],
+              event_max_time = datetime_est[which.max(.data[[var]])]) 
+  
+  ## Combine stats tibbles
+  stats <- inner_join(vpre_stats, 
+                      event_stats, 
+                      by = c("plot", "depth")) %>%
+    mutate(vdist = ifelse(abs(event_min - vpre) > abs(event_max - vpre), "decrease", "increase")) 
+  
+  inner_join(x, stats, by = c("plot", "depth")) %>% 
+    mutate(recovery_value = ifelse(vdist == "decrease", vpre - vpre_sd, vpre + vpre_sd)) %>% 
+    mutate(recovered = ifelse((vdist == "decrease" & var >= recovery_value) | 
+                                (vdist == "increase" & var <= recovery_value), "recovered", "disturbed")) %>% 
+    filter(time_period == "Post" & recovered == "recovered") %>%
+    ungroup() %>% 
+    group_by(plot, depth) %>% 
+    summarize(recovery_time = first(datetime_est)) %>% 
+    right_join(stats, by = c("plot", "depth")) %>% 
+    mutate(recovery_hours = ifelse(vdist == "decrease", 
+                                   difftime(recovery_time, event_min_time, units = "hours"),
+                                   difftime(recovery_time, event_max_time, units = "hours"))) %>% 
+    mutate(var = var)
+  
+}
 
-get_legend(calculate_lrr(swap, eh_mv))
+dodge_width = 0.5
 
-
-
-
-# 3. Detrend all data based on Control trends (depth-agnostic) -----------------
-
-## There are a couple steps we're going to take to equitably but impartially 
-## (i.e., same approach for all sensors) calculate when a time-series is 
-## "disturbed" (value extends outside of control range based on Control plot)
-## and when it "recovers", i.e., returns inside the control range.
-##
-## First, based on raw VWC, it's clear that we need to detrend, because there is 
-## a remarkably consistent downward linear trend in VWC. That means we should 
-## apply to the other metrics as well, even though they don't show strong linear
-## trends in the control plot.
-##
-## Second, because initial values differ between plots, we should normalize in
-## some way to account for that, so everything is starting on equal footing.
-
-# detrend_data <- function(data, var) {
-#   # Convert var to string (in case they are passed as bare variable names)
-#   var <- as.character(substitute(var))
-#   var_detrended <- paste0(var, "_detrended")
-#   
-#   # Convert datetime to numeric (seconds since start of experiment)
-#   data <- data %>%
-#     mutate(datetime_sec = as.numeric(difftime(datetime_est, min(datetime_est), units = "secs")))
-#   
-#   # Fit a linear model to the control plot
-#   control_model <- data %>%
-#     filter(plot == "Control") %>%
-#     lm(reformulate("datetime_sec", var), data = .)
-#   
-#   # Extract the slope and intercept
-#   intercept <- coef(control_model)[1]
-#   slope <- coef(control_model)[2]
-#   
-#   # Detrend all the plots
-#   data_detrended_raw <- data %>%
-#     mutate("{var_detrended}" := !!sym(var) - (intercept + slope * datetime_sec))
-#   
-#   # Calculate mean values by depth for Control plot
-#   control_stats <- data_detrended_raw %>% 
-#     filter(plot == "Control") %>% 
-#     summarize(range = max(.data[[var_detrended]], na.rm = TRUE) - min(.data[[var_detrended]], na.rm = TRUE))
-#   
-#   # Calculate min_control and max_control
-#   data_detrended <- data_detrended_raw %>%
-#     group_by(plot) %>%
-#     mutate(min_control = mean(.data[[var_detrended]][datetime_est == min(datetime_est, na.rm = TRUE)], na.rm = TRUE) - 0.5 * control_stats$range,
-#            max_control = mean(.data[[var_detrended]][datetime_est == min(datetime_est, na.rm = TRUE)], na.rm = TRUE) + 0.5 * control_stats$range)
-#   
-#   return(data_detrended)
-# }
-# 
-# teros_detrend <- detrend_data(teros, vwc)
-# teros_ec_detrend <- detrend_data(teros, ec)
-# firesting_detrend <- detrend_data(firesting, do_percent_sat)
-# swap_detrend <- detrend_data(swap, eh_mv)
-# 
-# initial_plots(teros_detrend, vwc_detrended) + 
-#   geom_hline(aes(yintercept = min_control), linetype = "dashed")  + 
-#   geom_hline(aes(yintercept = max_control), linetype = "dashed")
-# 
-# initial_plots(firesting_detrend, do_percent_sat_detrended) + 
-#   geom_hline(aes(yintercept = min_control), linetype = "dashed")  + 
-#   geom_hline(aes(yintercept = max_control), linetype = "dashed")
-# 
-# initial_plots(swap_detrend, eh_mv_detrended) + 
-#   geom_hline(aes(yintercept = min_control), linetype = "dashed")  + 
-#   geom_hline(aes(yintercept = max_control), linetype = "dashed")
-# 
-# initial_plots(teros_ec_detrend, ec_detrended) + 
-#   geom_hline(aes(yintercept = min_control), linetype = "dashed")  + 
-#   geom_hline(aes(yintercept = max_control), linetype = "dashed")
-# 
-# 
-# 
-# 
+bind_rows(calculate_response(teros, vwc), 
+          calculate_response(firesting, do_percent_sat), 
+          calculate_response(swap, eh_mv)) %>% 
+  mutate(recovery_hours = ifelse(is.na(recovery_hours), 150, recovery_hours)) %>% 
+  ggplot(aes(as.factor(depth), recovery_hours, color = plot)) + 
+  geom_linerange(aes(ymin = 0, ymax = recovery_hours), position = position_dodge(width = dodge_width)) +
+  geom_point(position = position_dodge(width = dodge_width), size = 3) +
+  facet_wrap(~var, nrow = 1) + 
+  coord_flip()
+  
+  
+  

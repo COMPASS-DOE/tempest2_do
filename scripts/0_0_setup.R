@@ -63,18 +63,20 @@ median_ <- function(var){median({{var}}, na.rm = T)}
 ## Helper function to label pre-determined time-periods 
 label_flood_periods <- function(data){ 
   data %>% 
-    mutate(datetime = force_tz(datetime_est, tz = common_tz)) %>% 
-    mutate(period = case_when(datetime >= dump_start1 - hours(24) & datetime < dump_start1 ~ "0_preflood", 
-                              datetime >= dump_start1 & datetime < dump_start2 ~ "1_flood1", 
-                              datetime >= dump_start2 & datetime < dump_start2 + hours(24) ~ "2_flood2", 
-                              datetime >= dump_start2 + hours(24) & datetime < dump_start2 + hours(48) ~ "3_postflood", 
+    #mutate(datetime = force_tz(datetime_est, tz = common_tz)) %>% 
+    mutate(period = case_when(datetime_est >= dump_start1 - hours(24) & datetime_est < dump_start1 ~ "0_preflood", 
+                              datetime_est >= dump_start1 & datetime_est < dump_end1 ~ "1_flood1", 
+                              datetime_est >= dump_end1 & datetime_est < dump_start2 ~ "2_interflood",
+                              datetime_est >= dump_start2 & datetime_est < dump_end2 ~ "3_flood2", 
+                              datetime_est >= dump_end2 & datetime_est < dump_end2 + hours(24) ~ "4_postflood", 
                               TRUE ~ NA)) %>% 
-    filter(!is.na(period)) %>% 
+    #filter(!is.na(period)) %>% 
     mutate(period_relabel = case_when(period == "0_preflood" ~ "Pre-Flood", 
                                       period == "1_flood1" ~ "Flood #1",
-                                      period == "2_flood2" ~ "Flood #2",
-                                      period == "3_postflood" ~ "Post-Flood"))  %>% 
-    mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Flood #2", "Post-Flood"))
+                                      period == "2_interflood" ~ "Inter-Flood",
+                                      period == "3_flood2" ~ "Flood #2",
+                                      period == "4_postflood" ~ "Post-Flood"))  %>% 
+    mutate(period_relabel = fct_relevel(period_relabel, "Pre-Flood", "Flood #1", "Inter-Flood", "Flood #2", "Post-Flood"))
 }
 
 
