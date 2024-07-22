@@ -1,0 +1,109 @@
+'CR1000X Series Datalogger
+'Smithsonian Environmental Research Center
+'date: 05/04/2024 
+'program author: Roy Rich
+
+' Program to multiplex redox probes
+' Modules for LICOR7810 units realtime stream
+
+' control ports 
+'c1 reset am16/32B
+'c2 clock am16/32B 
+'c3
+'c4 
+'c5 
+'c6
+'c7
+'c8
+
+'Declare Variables and Units
+Public BattV
+Public PTemp_C
+Public LCount
+
+Public Statname As String ' logger name
+Public PB ' packbus number of logger
+
+Public RedoxRa(20)
+Public RedoxRb(20)
+
+Units BattV=Volts
+Units PTemp_C=Deg C
+Units RedoxRa=mV
+Units RedoxRb=mV
+
+
+'Define Data Tables
+DataTable(Redox5,True,-1)
+DataInterval(0,5,min,10)
+Sample (1, Statname,IEEE4)
+Sample (1, BattV, FP2)
+Sample(20,RedoxRa(),IEEE4)
+Sample(20,RedoxRb(),IEEE4)
+EndTable
+
+DataTable(Redox15,True,-1)
+DataInterval(0,15,min,10)
+Sample (1, Statname,IEEE4)
+Sample (1, BattV, FP2)
+Sample(20,RedoxRa(),IEEE4)
+Sample(20,RedoxRb(),IEEE4)
+EndTable
+
+'Main Program
+BeginProg
+PreserveVariables
+'Main Scan
+
+
+Scan(5,min ,1,0)
+'Default CR1000 Datalogger Battery Voltage measurement 'BattV'
+    Statname = Status.StationName(1,1)
+    PB = Status.PakBusAddress(1,1)
+
+Battery(BattV)
+'Default CR1000 Datalogger Wiring Panel Temperature measurement 'PTemp_C'
+PanelTemp(PTemp_C,_60Hz)
+'Turn AM16/32 Multiplexer On
+
+SW12 (1)
+Delay (0,1000,mSec)
+'Multiplexer 1
+
+PortSet(1,1)
+Delay(0,1000,mSec)
+
+LCount=1
+SubScan(2000,msec,20)
+PulsePort(2,5000)
+'Switch to next AM16/32 Multiplexer channel
+''VoltDiff (RedoxRa(LCount),1,mv2500C,1,True,0,_60Hz,1.0,0)
+VoltDiff (RedoxRa(LCount),1,mv2500C,1,True,0,_60Hz,1.0,0)
+LCount=LCount+1
+NextSubScan
+
+'Turn AM16/32 Multiplexer Off
+PortSet(1,0)
+
+PortSet(1,1)
+Delay(0,1000,mSec)
+
+LCount=1
+SubScan(2000,msec,20)
+PulsePort(2,5000)
+'Switch to next AM16/32 Multiplexer channel
+''VoltDiff (RedoxRa(LCount),1,mv2500C,1,True,0,_60Hz,1.0,0)
+VoltDiff (RedoxRb(LCount),1,mv2500C,3,True,0,_60Hz,1.0,0)
+LCount=LCount+1
+NextSubScan
+
+'Turn AM16/32 Multiplexer Off
+PortSet(1,0)
+SW12 (0)
+
+
+'Call Data Tables and Store Data
+CallTable Redox5
+CallTable Redox15
+
+NextScan

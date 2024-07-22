@@ -120,6 +120,7 @@ p_rates <- do_rates %>%
 
 ## see explanation above...
 hypoxia_threshold = ((4.5/21.3) * 100)
+anoxia_threshold = 1
 
 p_hypoxic <- firesting %>% 
   dplyr::select(-datetime) %>% 
@@ -131,9 +132,11 @@ p_hypoxic <- firesting %>%
   mutate(period_relabel = fct_relevel(period_relabel, "Flood #1", "Inter-Flood", "Flood #2", "Post-Flood")) %>% 
   #group_by(plot, depth, period_relabel) %>% 
   group_by(plot, depth, period_relabel) %>% 
-  summarize(count_below_threshold = sum(do_percent_sat < hypoxia_threshold),
+  summarize(count_below_hypoxia_threshold = sum(do_percent_sat < hypoxia_threshold),
+            count_below_anoxia_threshold = sum(do_percent_sat < anoxia_threshold = 1),
             delta_hrs = round(as.numeric((max(datetime_est) - min(datetime_est)), unit = "hours")), 1) %>% 
-  mutate(hrs_hypoxic = (count_below_threshold * 5)/60, 
+  mutate(hrs_hypoxic = (count_below_hypoxia_threshold * 5)/60, 
+         hrs_anoxic = (count_below_anoxia_threshold * 5)/60, 
          perc_hypoxic = (hrs_hypoxic/delta_hrs) * 100) %>% 
   ggplot(aes(perc_hypoxic, as.factor(depth), fill = period_relabel)) + 
   geom_col(position = position_dodge(preserve = "single")) + 
@@ -150,9 +153,17 @@ ggsave("figures/5_do_rates_and_hypoxica.png", width = 10, height = 6)
 do_rates %>% 
   filter(delta_do_perc_per_hr > 0) %>% 
   ungroup() %>% 
-  group_by(event) %>% 
+  group_by(event, depth, plot) %>% 
   summarize(mean(delta_do_perc_per_hr), 
+            mean(delta_time),
             sd(delta_do_perc_per_hr))
-
-
+## Compare how much faster rates were
+do_rates %>% 
+  filter(delta_do_perc_per_hr > 0) %>% 
+  ungroup() %>% 
+  group_by(event, depth, plot) %>% 
+  summarize(mean_rate = mean(delta_do_perc_per_hr)) %>% 
+  mutate(event = str_replace_all(event, "Flood #", "flood")) %>% 
+  pivot_wider(names_from = "event", values_from = "mean_rate") %>% 
+  mutate(diff = flood2 / flood1)
 

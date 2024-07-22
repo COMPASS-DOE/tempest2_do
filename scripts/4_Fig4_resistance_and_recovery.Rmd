@@ -327,5 +327,23 @@ ggsave("figures/5_Fig5_resistance.png", width = 10, height = 4)
 
 ```
 
+```{r}
+
+## Let's calculate the change in log-response (and Vdist) for Eh with depth
+
+lrr %>% 
+  filter(var == "eh_mv") %>% 
+ggplot(aes(depth, vpre_mean -vdist)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = F) + 
+  facet_wrap(~plot)
+
+lrr %>% 
+  filter(var == "eh_mv") %>% 
+  ungroup() %>% 
+  group_by(plot) %>% 
+  summarize(slope = coef(lm((vpre_mean - vdist) ~ depth))[["depth"]])
+
+```
 
 

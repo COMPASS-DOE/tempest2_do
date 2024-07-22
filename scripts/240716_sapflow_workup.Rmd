@@ -1,0 +1,176 @@
+---
+title: "240716_sapflow_workup_v3"
+author: "PR"
+date: "2024-07-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,
+                      warning = F,
+                      message = F)
+```
+
+```{r Setup}
+
+source("../scripts/0_0_setup.R")
+
+## Read in raw sapflow
+sapflow_raw <- read_csv("../data/240717_sapflow_final_unbinned.csv") %>% 
+  mutate(datetime_est = force_tz(datetime_est, tzone = common_tz)) %>% 
+  filter(datetime_est >= dump_start1 - days(14) & 
+           datetime_est <= dump_start2 + days(14)) %>% 
+  select(datetime_est, plot, sensor_id, sapflow_mv) %>% 
+  mutate(date = date(datetime_est)) 
+
+```
+
+#### Sapflow workup
+
+The goal of this workup is to see if sapflow changed after flooding during the TEMPEST2 flooding events in 2023. To do this, I'm taking data from before, during, and after the flooding events, converting them to Fd, then normalizing them following [McDowell et al. 2006](https://doi.org/10.1890/1051-0761(2006)016%5B1164:HMOPPG%5D2.0.CO;2) Figure 3.
+
+First, here are the raw data we will use. There are a couple days missing which were scrubbed due to non-stationary voltage:
+
+```{r}
+ggplot(sapflow_raw, aes(datetime_est, sapflow_mv, color = plot, group = sensor_id)) + 
+  geom_vline(xintercept = dump_start1) + 
+  geom_vline(xintercept = dump_start2) + 
+  geom_line()
+
+```
+
+#### Convert raw sapflow to Fd
+
+Once converted to Fd following formulas from Steph/Nate, the data look like this:
+
+```{r}
+## Calculate dTmax: maximum daily sapflow value
+dtmax <- sapflow_raw %>% 
+  mutate(hour = hour(datetime_est)) %>% 
+  filter(hour <= 8 | hour >= 20) %>%  # Originally 0-5, now doing approximately sunset to sunrise (8p to 8a)
+  group_by(date, plot, sensor_id) %>% 
+  summarise(dtmax = max(sapflow_mv, na.rm = TRUE), dTmax_datetime = datetime_est[which.max(sapflow_mv)])
+
+## This is sap flux density (see L125)
+sapflow_fd <- sapflow_raw %>% 
+  left_join(dtmax, by = c("date", "plot", "sensor_id")) %>% 
+  mutate(fd = 360000 * (0.00011899) * (((dtmax / sapflow_mv) - 1)^1.231))
+
+ggplot(sapflow_fd, aes(datetime_est, fd, color = plot, group = sensor_id)) + 
+  geom_vline(xintercept = dump_start1) + 
+  geom_vline(xintercept = dump_start2) + 
+  geom_line()
+```
+
+Next, let's color-code our dataset by time period relative to the flooding events to visualize the portions of the dataset we will be comparing:
+
+```{r}
+sapflow_fd_n0 <- sapflow_fd %>% 
+  mutate(tod = as_hms(datetime_est)) %>% 
+  mutate(period = case_when(datetime_est < dump_start1 ~ "0_preflood", 
+                            datetime_est > dump_start2 + hours(24) ~ "2_postflood", 
+                            TRUE ~ "1_flood"))
+  
+ggplot(sapflow_fd_n0, aes(datetime_est, fd, color = period, group = sensor_id)) + 
+  geom_vline(xintercept = dump_start1) + 
+  geom_vline(xintercept = dump_start2) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+
+```
+
+#### Creating means and standard deviations
+
+There seem to be many ways to process these data. Since we are really interested in understanding if there is a change in the treatments relative to the control after flooding, we'll follow the methods in [McDowell et al. 2006](https://doi.org/10.1890/1051-0761(2006)016%5B1164:HMOPPG%5D2.0.CO;2) Figure 3. The general steps are
+
+1)  normalize each plot to the mean value prior to disturbance, and then
+
+2)  normalize treatment plots by date to the Control.
+
+Since our data have different dimensions (i.e., not just one control site), we will do some binning first to simply things. First, let's trim data to 10am to 2pm to capture maximum sapflow (arbitrary, but centered on noon, happy to change), group by date and plot, and calculate means and standard deviations:
+
+```{r}
+sapflow_fd_n0_means <- sapflow_fd_n0 %>% 
+  filter(tod > as_hms("10:00:00") & tod < as_hms("14:00:00")) %>% 
+  ungroup() %>% 
+  group_by(date, plot) %>% 
+  summarize(period = first(period), 
+            mean_fd = mean(fd, na.rm = T), 
+            sd_fd = sd(fd, na.rm = T))
+  
+sapflow_fd_n0_means %>% 
+  ggplot(aes(x = date)) + 
+  geom_errorbar(aes(ymin = mean_fd - sd_fd, ymax = mean_fd + sd_fd)) + 
+  geom_point(aes(y = mean_fd)) + 
+  facet_wrap(~plot, nrow = 1)
+
+```
+
+That looks crazy... but let's power through. 
+
+#### Normalize to pre-disturbance (Figure 3B)
+
+The next step is the normalization step #1 above: normalize each plot to the mean of the pre-flood values, basically setting a baseline of 0 for each plot:
+
+```{r}
+
+sapflow_fd_preflood_means <- sapflow_fd_n0_means %>% 
+  filter(period == "0_preflood") %>% 
+  ungroup() %>% 
+  group_by(plot) %>% 
+  summarize(preflood_mean = mean(mean_fd, na.rm = T))
+
+sapflow_fd_n1 <- sapflow_fd_n0_means %>% 
+  ungroup() %>% 
+  inner_join(sapflow_fd_preflood_means, by = "plot") %>% 
+  mutate(fd_n1 = mean_fd - preflood_mean)
+
+sapflow_fd_n1 %>% 
+  ggplot(aes(x = date, fd_n1, fill = period)) + 
+  geom_col() + 
+  facet_wrap(~plot, nrow = 1)
+```
+
+#### Normalize to control plot (Figure 3C)
+
+Now for the second normalization: we'll subtract the value of Control for each day from the value for each Treatment plot:
+
+```{r}
+
+sapflow_fd_n1_control <- sapflow_fd_n1 %>% 
+  filter(plot == "Control") %>% 
+  rename("fd_n1_control" = fd_n1) %>% 
+  dplyr::select(date, fd_n1_control)
+  
+
+sapflow_fd_n2 <- sapflow_fd_n1 %>% 
+  inner_join(sapflow_fd_n1_control, by = "date") %>% 
+  mutate(fd_n2 = fd_n1 - fd_n1_control)
+  
+sapflow_fd_n2 %>% 
+  ggplot(aes(x = date, fd_n2, fill = period)) + 
+  geom_col() + 
+  facet_wrap(~plot, nrow = 1)
+```
+
+Let's summarize this a little differently:
+
+```{r}
+
+sapflow_fd_n2 %>% 
+  filter(plot != "Control" & 
+           period != "1_flood") %>% 
+  ggplot(aes(plot, fd_n2, fill = period)) + 
+  geom_boxplot(alpha = 0.5, position = position_dodge(width = 0.75)) + 
+  geom_jitter(aes(color = period), position = position_dodge(width = 0.75), size = 2) +
+  geom_hline(yintercept = 0) + 
+  #facet_grid(.~plot) + 
+  stat_compare_means() + 
+  #stat_compare_means(comparisons = list(c("0_preflood", "2_postflood")), ) + 
+  labs(x = "Pre/post-flooding", y = "Fd (normalized to Fig 3C)")
+```
+
+#### Consensus
+
+The p-values above each boxplot suggest that sapflow did not change significantly in either treatment plot in response to flooding. 
+

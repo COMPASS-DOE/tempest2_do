@@ -29,6 +29,7 @@ p_load(tidyverse,
        ggspatial, # north arrow and compass
        ggsflabel, # add labels
        googledrive, 
+      ggtukey,
        ggthemes) #theme_map()
        
 ## Set ggplot theme
