@@ -25,6 +25,12 @@ soil_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_soil_nickworking.csv")) %>%
   mutate(condition = str_to_sentence(str_replace_all(condition, "-", ""))) %>% 
   mutate(condition = fct_relevel(condition, "Preflood"))
 
+soil_ghg %>% 
+  mutate(datetime = parsedate::parse_date(paste(date, time))) %>% 
+  ggplot(aes(datetime, co2_umol_m2_s, group = collar)) + 
+  geom_point() + 
+  facet_wrap(~plot, ncol = 1)
+
 tree_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_trees_processed.csv")) %>% 
   clean_names() %>% 
   filter(!is.na(timepoint)) %>% 
