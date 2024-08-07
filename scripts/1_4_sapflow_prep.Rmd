@@ -308,6 +308,6 @@ ggplot(sapflow_qc3, aes(datetime_est, sapflow_mv, color = sensor_id)) +
 write_csv(sapflow_qc3, "../data/240717_sapflow_final_unbinned.csv")
 ```
 
-Final data are exported as *240507_sapflow_final_unbinned.csv* in the *data* folder
+Final data are exported as *240717_sapflow_final_unbinned.csv* in the *data* folder
 
 
