@@ -46,10 +46,19 @@ p_sapflow <- sapflow %>%
   geom_boxplot(alpha = 0.5, position = position_dodge(width = 0.75)) + 
   geom_jitter(aes(color = period), position = position_dodge(width = 0.75), size = 2) +
   geom_hline(yintercept = 0) + 
+  #geom_tukey(where = "whisker") + 
   #facet_grid(.~plot) + 
   stat_compare_means() + 
   #stat_compare_means(comparisons = list(c("0_preflood", "2_postflood")), ) + 
   labs(x = "Treatment plot", y = "Sapflux density (?)")
+
+sapflow %>% 
+  filter(plot != "Control" & 
+           period != "1_flood") %>% 
+  mutate(plot_period = paste0(plot, "_", period)) %>% 
+  ggplot(aes(plot_period, fd_n2, group = plot_period)) + 
+  geom_boxplot(alpha = 0.5, position = position_dodge(width = 0.75)) + 
+  geom_tukey(where = "whisker")
 
 p_tree_ghg <- ggplot(tree_ghg, aes(condition, flux_co2_umol_m2_min)) + 
   geom_boxplot(aes(fill = condition), show.legend = F, outlier.alpha = 0, alpha = 0.5) + 
@@ -76,4 +85,11 @@ plot_veg <- function(var, y_label){
 bottom_row <- plot_grid(plot_veg(ci, "Intercellular CO2 (ppm)"), 
           plot_veg(a, "Photosynthesis rate (umol/m2/min)"), 
           plot_veg(gs, "Stomatal conductance (mol/m2/min)"), 
-          nrow = 1)
+          nrow = 1, 
+          labels = c("C", "D", "E"))
+
+
+plot_grid(top_row, bottom_row, ncol = 1)
+ggsave("figures/5_Fig5_vegetation_responses.png", width = 9, height = 8)
+ggsave("figures/5_Fig5_vegetation_responses.pdf", width = 9, height = 8)
+
