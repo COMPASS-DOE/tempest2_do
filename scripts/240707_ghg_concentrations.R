@@ -83,11 +83,13 @@ my_comparisons = list(c("0_preflood", "1_flood"),
                       c("1_flood", "2_postflood"), 
                       c("0_preflood", "2_postflood"))
 
-sgw %>% 
+sgw_final <- sgw %>% 
   #filter(sample_depth == "10") %>% 
   mutate(period = case_when(date < dump_start1 ~ "0_preflood", 
                             date > dump_end2 ~ "2_postflood", 
-                            TRUE ~ "1_flood")) %>% 
+                            TRUE ~ "1_flood")) 
+
+sgw_final %>% 
   ggplot(aes(period, co2_conc_ppm_dilcorr, fill = period)) + 
   geom_boxplot(show.legend = F, alpha = 0.5) + 
   stat_compare_means(comparisons = my_comparisons) + 
@@ -95,6 +97,7 @@ sgw %>%
   scale_fill_viridis_d()
 ggsave("figures/240722_soil_co2_concentrations.png", width = 7, height = 3.5)
 
+write_csv(sgw, "data/240909_soil_ghg_concentrations.csv")
 
 # 5. Make some TGW plots to see what we have -----------------------------------
 

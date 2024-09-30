@@ -51,7 +51,8 @@ dtmax <- sapflow_raw %>%
   group_by(date, plot, sensor_id) %>% 
   summarise(dtmax = max(sapflow_mv, na.rm = TRUE), dTmax_datetime = datetime_est[which.max(sapflow_mv)])
 
-## This is sap flux density (see L125)
+## This is sap flux density - based on Granier's formula
+## Units are g sap /m2 sapwood /s
 sapflow_fd <- sapflow_raw %>% 
   left_join(dtmax, by = c("date", "plot", "sensor_id")) %>% 
   mutate(fd = 360000 * (0.00011899) * (((dtmax / sapflow_mv) - 1)^1.231))

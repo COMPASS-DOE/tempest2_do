@@ -154,13 +154,59 @@ pull_data <- function(plot,
   return(rate)
 }
 
-trim_start_raw %>% 
-  filter(period_relabel == "Flood #1")
-  slice(1) %>% 
-  pmap(pull_data)
+# trim_start_raw %>% 
+#   filter(period_relabel == "Flood #1") %>% 
+#   #dplyr::slice(1) %>% 
+#   pmap(pull_data)
+
+
+# ## What does the relationship between soil CO2 concentration and flux look like?
+ghg_path = "data/raw_data/ghgs/"
+
+soil_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_soil_nickworking.csv")) %>%
+  clean_names() %>%
+  filter(!is.na(timepoint)) %>%
+  mutate(timepoint_dbl = str_sub(timepoint, 2)) %>%
+  mutate(condition = str_to_sentence(str_replace_all(condition, "-", ""))) %>%
+  mutate(condition = fct_relevel(condition, "Preflood"))
+
+ggplot(soil_ghg, aes(condition, co2_umol_m2_s, fill = condition)) +
+  geom_boxplot() +
+  facet_wrap(~plot, nrow = 1)
+
+baseline <- soil_ghg %>% 
+  filter(plot != "Control") %>% 
+  filter(condition == "Preflood") %>% 
+  summarize(umol_m2_s = mean(co2_umol_m2_s, na.rm = T)) %>% 
+  mutate(umol_m2_yr = umol_m2_s * 3600 * 365.25)
+  
+flood_duration <- soil_ghg %>% 
+  filter(condition == "Flooded") %>% 
+  mutate(datetime = as_datetime(paste(parse_date(date), time))) %>% 
+  summarize(duration = as.numeric(max(datetime) - min(datetime))) %>% 
+  pull()
+
+reduction <- soil_ghg %>% 
+  filter(plot != "Control") %>% 
+  filter(condition == "Flooded") %>% 
+  summarize(decline_s = mean(co2_umol_m2_s, na.rm = T)) %>% 
+  mutate(diff = baseline$umol_m2_s - decline_s) %>% 
+  mutate(diff_yr = diff * 3600 * flood_duration)
+
+## So basically, it's really not that important...
+(reduction$diff_yr / baseline$umol_m2_yr) * 100
+
+
+# sgw <- read_csv("data/240909_soil_ghg_concentrations.csv")
+
+
+## Calculate the percent of average daily fluxes associated with the decreased
+## respiration
 
 
 
+
+  
 ## For Flood #2, we have a couple patterns: 
 ### Normal rate, then plateauing near 0: i = 2, 4/6 (ish), 10, 12, 14 
 ### Really low (stays hypoxic/anoxic): i = 8, 16
@@ -168,3 +214,7 @@ trim_start_raw %>%
 ## and if max > 20, remove all values < 1, or else use some sort of breakpoint
 ## identifier
 
+  
+  
+  
+  
