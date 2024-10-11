@@ -15,14 +15,29 @@ knitr::opts_chunk$set(echo = F,
 
 source("../scripts/0_0_setup.R")
 
+## Read in species information
+spp_raw <- read_csv("../data/tempest_tree_inventory.csv") %>% 
+  clean_names() 
+  
+spp_raw %>% 
+  filter(plot == "Control" & grid == "B7")
+#spp_raw
+
 ## Read in raw sapflow
 sapflow_raw <- read_csv("../data/240717_sapflow_final_unbinned.csv") %>% 
   mutate(datetime_est = force_tz(datetime_est, tzone = common_tz)) %>% 
   filter(datetime_est >= dump_start1 - days(14) & 
            datetime_est <= dump_start2 + days(14)) %>% 
-  select(datetime_est, plot, sensor_id, sapflow_mv) %>% 
+  select(datetime_est, plot, sensor_id, location, sapflow_mv) %>% 
   mutate(date = date(datetime_est)) 
 
+## Check # of sensor_ids for each combo of plot and location (grid cell) since 
+## location is the 'by' column to merge with spp_raw
+
+sapflow_raw %>% 
+  group_by(plot, location) %>%
+  summarise(sensor_ids = n_distinct(sensor_id)) %>%
+  filter(sensor_ids > 1)
 ```
 
 #### Sapflow workup
