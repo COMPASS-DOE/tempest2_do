@@ -51,7 +51,6 @@ ggplot(sapflow_raw, aes(datetime_est, sapflow_mv, color = plot, group = sensor_i
   geom_vline(xintercept = dump_start1) + 
   geom_vline(xintercept = dump_start2) + 
   geom_line()
-
 ```
 
 #### Convert raw sapflow to Fd
@@ -92,7 +91,6 @@ ggplot(sapflow_fd_n0, aes(datetime_est, fd, color = period, group = sensor_id)) 
   geom_vline(xintercept = dump_start2) + 
   geom_line() + 
   facet_wrap(~plot, ncol = 1)
-
 ```
 
 #### Creating means and standard deviations

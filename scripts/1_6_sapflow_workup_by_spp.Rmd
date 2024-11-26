@@ -9,19 +9,23 @@ output: html_document
 knitr::opts_chunk$set(echo = F,
                       warning = F,
                       message = F)
-```
-
-```{r Setup}
 
 source("../scripts/0_0_setup.R")
 
+p_load(ggpubr)
+```
+
+### Read in sapflow
+
+We are largely cannibalizing 1_5_sapflow_workup.Rmd, but since we want to do our stats grouped by species, we'll need to incorporate that info at the start of the workflow, then carry it through, which is why we're doing a full, separate workflow.
+
+```{r read sapflow}
+
 ## Read in species information
-spp_raw <- read_csv("../data/tempest_tree_inventory.csv") %>% 
-  clean_names() 
-  
-spp_raw %>% 
-  filter(plot == "Control" & grid == "B7")
-#spp_raw
+spp_raw <- read_csv("../data/TEMPEST_TreeChamberInstallation_11272023.csv") %>% 
+  clean_names() %>% 
+  rename("location" = grid_cell, 
+         "sensor_id" = id)
 
 ## Read in raw sapflow
 sapflow_raw_no_spp <- read_csv("../data/240717_sapflow_final_unbinned.csv") %>% 
@@ -30,14 +34,321 @@ sapflow_raw_no_spp <- read_csv("../data/240717_sapflow_final_unbinned.csv") %>%
            datetime_est <= dump_start2 + days(14)) %>% 
   select(datetime_est, plot, sensor_id, location, sapflow_mv) %>% 
   mutate(date = date(datetime_est)) 
+  
+  
+sapflow_joined <- left_join(sapflow_raw_no_spp, 
+                            spp_raw %>% 
+                              select(plot, location, sensor_id, species), 
+             by = c("plot", "location", "sensor_id"))
 
-#sapflow_raw <- sapflow_raw_no_spp
-
-## Check # of sensor_ids for each combo of plot and location (grid cell) since 
-## location is the 'by' column to merge with spp_raw
-
-# sapflow_raw %>% 
-#   group_by(plot, location) %>%
-#   summarise(sensor_ids = n_distinct(sensor_id)) %>%
-#   filter(sensor_ids > 1)
+## Check that we're not losing any due to issues w species dataset
+message(paste("check that", nrow(sapflow_raw_no_spp), "and", nrow(sapflow_joined), "match"))
 ```
+
+#### Sapflow workup
+
+The goal of this workup is to see if sapflow changed after flooding during the TEMPEST2 flooding events in 2023. To do this, I'm taking data from before, during, and after the flooding events, converting them to Fd, then normalizing them following [McDowell et al. 2006](https://doi.org/10.1890/1051-0761(2006)016%5B1164:HMOPPG%5D2.0.CO;2) Figure 3.
+
+First, here are the raw data we will use. There are a couple days missing which were scrubbed due to non-stationary voltage:
+
+```{r}
+ggplot(sapflow_joined, aes(datetime_est, sapflow_mv, color = plot, group = sensor_id)) + 
+  geom_vline(xintercept = dump_start1) + 
+  geom_vline(xintercept = dump_start2) + 
+  geom_line()
+```
+
+#### Convert raw sapflow to Fd
+
+Once converted to Fd following formulas from Steph/Nate, the data look like this:
+
+```{r}
+## Calculate dTmax: maximum daily sapflow value
+dtmax <- sapflow_joined %>% 
+  mutate(hour = hour(datetime_est)) %>% 
+  filter(hour <= 8 | hour >= 20) %>%  # Originally 0-5, now doing approximately sunset to sunrise (8p to 8a)
+  group_by(date, plot, sensor_id) %>% 
+  summarise(dtmax = max(sapflow_mv, na.rm = TRUE), dTmax_datetime = datetime_est[which.max(sapflow_mv)])
+
+## This is sap flux density - based on Granier's formula
+## Units are g sap /m2 sapwood /s
+sapflow_fd <- sapflow_joined %>% 
+  left_join(dtmax, by = c("date", "plot", "sensor_id")) %>% 
+  mutate(fd = 360000 * (0.00011899) * (((dtmax / sapflow_mv) - 1)^1.231))
+
+ggplot(sapflow_fd, aes(datetime_est, fd, color = plot, group = sensor_id)) + 
+  geom_vline(xintercept = dump_start1) + 
+  geom_vline(xintercept = dump_start2) + 
+  geom_line()
+```
+
+#### Add flood timing
+
+Next, let's color-code our dataset by time period relative to the flooding events to visualize the portions of the dataset we will be comparing:
+
+```{r}
+sapflow_fd_n0 <- sapflow_fd %>% 
+  mutate(tod = as_hms(datetime_est)) %>% 
+  mutate(period = case_when(datetime_est < dump_start1 ~ "0_preflood", 
+                            datetime_est > dump_start2 + hours(24) ~ "2_postflood", 
+                            TRUE ~ "1_flood"))
+  
+ggplot(sapflow_fd_n0, aes(datetime_est, fd, color = period, group = sensor_id)) + 
+  geom_vline(xintercept = dump_start1) + 
+  geom_vline(xintercept = dump_start2) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+```
+
+#### ID'ing the appropriate window
+
+Let's look at what time of day Fd is at its maximum
+
+```{r}
+
+y <- sapflow_fd_n0 %>% 
+  group_by(sensor_id, location, date) %>%
+  summarize(max_fd_tod = tod[which.max(fd)], .groups = 'drop')
+
+ggplot(y, aes(sensor_id, max_fd_tod)) + 
+  geom_boxplot()
+
+x <- sapflow_fd_n0 %>% 
+  group_by(sensor_id, tod) %>% 
+  dplyr::summarize(plot = first(plot), 
+                  species = first(plot), 
+                  fd = mean(fd))
+
+x %>% 
+  ggplot(aes(tod, fd, group = sensor_id, color = species)) + 
+  geom_line() + 
+  geom_vline(xintercept = as_hms("12:00:00"), linetype = "dashed") + 
+  facet_wrap(~plot)
+
+```
+\n
+
+We know that maxima are generally around noon, but vary from pre 8am to post 4p in some cases. Since it was recommended by Miznar to pick one window for all days/sites/sensors, let's see how much we lose if we ignore day-sensor combos with maxes outside of 9a to 3p: 
+
+```{r}
+y <- sapflow_fd_n0 %>% 
+  group_by(plot, sensor_id, location, date) %>%
+  summarize(
+    max_fd = max(fd, na.rm = TRUE),
+    max_fd_9_15 = max(fd[tod >= as_hms("09:00:00") & tod <= as_hms("15:00:00")]), 
+    max_fd_930_1430 = max(fd[tod >= as_hms("09:30:00") & tod <= as_hms("14:30:00")]), 
+    max_fd_10_14 = max(fd[tod >= as_hms("10:00:00") & tod <= as_hms("14:00:00")]), 
+    max_fd_11_13 = max(fd[tod >= as_hms("11:00:00") & tod <= as_hms("13:00:00")])) %>% 
+    #max_fd_9_15 = max(fd[format(datetime_est, "%H:%M") >= "09:00" & format(datetime_est, "%H:%M") <= "15:00"], na.rm = TRUE),
+    #max_fd_10_14 = max(fd[format(datetime_est, "%H:%M") >= "10:00" & format(datetime_est, "%H:%M") <= "14:00"], na.rm = TRUE),
+    #max_fd_11_13 = max(fd[format(datetime_est, "%H:%M") >= "11:00" & format(datetime_est, "%H:%M") <= "13:00"], na.rm = TRUE)) %>% 
+  filter(if_all(everything(), is.finite)) %>% 
+  drop_na() %>% 
+  mutate(diff_09_15 = (max_fd - max_fd_9_15) / max_fd*100, 
+         diff_0930_1430 = (max_fd - max_fd_930_1430) / max_fd*100,
+         diff_10_14 = (max_fd - max_fd_10_14) / max_fd*100, 
+         diff_11_13 = (max_fd - max_fd_11_13) / max_fd*100)
+
+my_comparisons = list(c("diff_09_15", "diff_0930_1430"), 
+                      c("diff_09_15", "diff_10_14"), 
+                      c("diff_09_15", "diff_11_13"))
+
+y %>% 
+  pivot_longer(cols = starts_with("diff_"),
+    names_to = "time_range",
+    values_to = "fd_value") %>% 
+  ggplot(aes(time_range, fd_value, fill = time_range)) + 
+  geom_boxplot() + 
+  stat_compare_means(comparisons = my_comparisons) + 
+  facet_wrap(~plot, nrow = 1, scales = "free_x") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 0))
+
+```
+
+
+I tried a number of windows, the base being 1100-1300 which seems to be standard. I then increased to +/- 2 hrs, 2.5 hrs, and 3 hrs. Since there are some maxima outside of +/- 3 hrs, and compared the maximum for Fd from the full day to each of these windowing appraoches to find a balance between following protocol (pick a window for calculating sapflow) and accounting for high variance in the dataset. I subtracted each of the windows from the daily max to understand the difference each window size made. I think calculated p-values for each of these windowing appraoches relative to the largest window (+/- 3 hours) to detemrine if any windows shorter than 3 hours could be used without significantly increasing the difference between actual max and windowed max. Our Goldilocks here appears to be the **2.5-hour window**, which was not significantly different for any plot from the 3-hour window, so we'll use that going forward. 
+
+
+#### Creating means and standard deviations
+
+There seem to be many ways to process these data. Since we are really interested in understanding if there is a change in the treatments relative to the control after flooding, we'll follow the methods in [McDowell et al. 2006](https://doi.org/10.1890/1051-0761(2006)016%5B1164:HMOPPG%5D2.0.CO;2) Figure 3. The general steps are
+
+1)  normalize each plot to the mean value prior to disturbance, and then
+
+2)  normalize treatment plots by date to the Control.
+
+Since our data have different dimensions (i.e., not just one control site), we will do some binning first to simply things. First, let's ID the period of maximum sapflow. Usually this is around noon, but we'd like to ID when the maximum is across the dataset. I want to make sure this makes sense, so let's look at this by plot and by species: 
+
+```{r}
+sapflow_fd_n0_means <- sapflow_fd_n0 %>% 
+  filter(!is.na(species)) %>% 
+  filter(tod > as_hms("09:30:00") & tod < as_hms("14:30:00")) %>% 
+  ungroup() %>% 
+  group_by(date, plot, species) %>% 
+  summarize(period = first(period), 
+            mean_fd = mean(fd, na.rm = T), 
+            sd_fd = sd(fd, na.rm = T))
+  
+sapflow_fd_n0_means %>% 
+  ggplot(aes(x = date, color = species)) + 
+  geom_errorbar(aes(ymin = mean_fd - sd_fd, ymax = mean_fd + sd_fd)) + 
+  geom_point(aes(y = mean_fd)) + 
+  facet_wrap(species~plot, nrow = 3, scale = "free_y")
+```
+
+That looks crazy... but let's power through. 
+
+#### Normalize to pre-disturbance (Figure 3B)
+
+The next step is the normalization step #1 above: normalize each plot to the mean of the pre-flood values, basically setting a baseline of 0 for each plot:
+
+```{r}
+
+sapflow_fd_preflood_means <- sapflow_fd_n0_means %>% 
+  filter(period == "0_preflood") %>% 
+  ungroup() %>% 
+  group_by(plot, species) %>% 
+  summarize(preflood_mean = mean(mean_fd, na.rm = T))
+
+sapflow_fd_n1 <- sapflow_fd_n0_means %>% 
+  ungroup() %>% 
+  inner_join(sapflow_fd_preflood_means, by = c("plot", "species")) %>% 
+  mutate(fd_n1 = mean_fd - preflood_mean)
+
+sapflow_fd_n1 %>% 
+  ggplot(aes(x = date, fd_n1, fill = period)) + 
+  geom_col() + 
+  facet_wrap(species~plot, nrow = 3)
+```
+
+#### Normalize to control plot (Figure 3C)
+
+Now for the second normalization: we'll subtract the value of Control for each day from the value for each Treatment plot:
+
+```{r}
+
+sapflow_fd_n1_control <- sapflow_fd_n1 %>% 
+  filter(plot == "Control") %>% 
+  rename("fd_n1_control" = fd_n1) %>% 
+  dplyr::select(date, species, fd_n1_control)
+  
+
+sapflow_fd_n2 <- sapflow_fd_n1 %>% 
+  inner_join(sapflow_fd_n1_control, by = c("date", "species")) %>% 
+  mutate(fd_n2 = fd_n1 - fd_n1_control)
+  
+sapflow_fd_n2 %>% 
+  ggplot(aes(x = date, fd_n2, fill = period)) + 
+  geom_col() + 
+  facet_wrap(species~plot, nrow = 3)
+```
+
+Let's summarize this a little differently:
+
+```{r}
+
+sapflow_fd_n2 %>% 
+  filter(plot != "Control" & 
+           period != "1_flood") %>% 
+  ggplot(aes(plot, fd_n2, fill = period)) + 
+  geom_boxplot(alpha = 0.5, position = position_dodge(width = 0.75)) + 
+  geom_jitter(aes(color = period), position = position_dodge(width = 0.75), size = 2) +
+  geom_hline(yintercept = 0) + 
+  stat_compare_means(aes(label = ..p.signif..)) + 
+  labs(x = "Pre/post-flooding", y = "Fd (normalized to Fig 3C)")
+ggsave("../figures/241111_sapflow.png", width = 5, height = 4)
+
+sapflow_fd_n2 %>% 
+  filter(plot != "Control" & 
+           period != "1_flood") %>% 
+  ggplot(aes(plot, fd_n2, fill = period)) + 
+  geom_boxplot(alpha = 0.5, position = position_dodge(width = 0.75)) + 
+  geom_jitter(aes(color = period), position = position_dodge(width = 0.75), size = 2) +
+  geom_hline(yintercept = 0) + 
+  stat_compare_means(aes(label = ..p.signif..)) + 
+  facet_wrap(~species, nrow = 1) +
+  labs(x = "Pre/post-flooding", y = "Fd (normalized to Fig 3C)")
+ggsave("../figures/241111_sapflow_by_spp.png", width = 8, height = 4)
+
+write_csv(sapflow_fd_n2 %>% 
+  filter(plot != "Control" & 
+           period != "1_flood"), 
+  "../data/241125_sapflow_by_spp.csv")
+```
+
+
+### Read in PAR data
+
+First, reading in PAR data for use later
+
+```{r prep for PAR}
+raw_data_path <- "../data/l1_raw_files/par/"
+
+options(gargle_oauth_email = "peter.regier@pnnl.gov")
+
+## .../Sensor Data Releases/Level1/v1-0/TMP_2023
+l1_file_list <- drive_ls("https://drive.google.com/drive/folders/1E7HBd4L1q0W58Ih2Lyqu9r0A0HHWAu6L",
+                     pattern = ".csv")
+
+dates_to_include = c("20230501", "20230601", "20230701", "20230801")
+
+l1_file_list_filtered <- l1_file_list %>% 
+  filter(str_detect(name, str_c(dates_to_include, collapse = "|"))) %>% 
+  filter(str_detect(name, "GCW_W"))
+
+drive_download_ <- function(data){
+  #message(paste("Downloading", data$name))
+  # you could add an ifelse to only download files it doesn't fine in raw_data_path
+  drive_download(data$id, overwrite = T, path = paste0(raw_data_path, data$name))
+  
+  ## Use a for-loop to read in files in a way that I can see what's going on
+## Download data to local. I tried to map() but for some reasons it doesn't work?
+tic("pull data from gdrive") #48s
+for(i in 1:nrow(l1_file_list_filtered)){
+  message(l1_file_list_filtered %>% slice(i))
+  drive_download_(l1_file_list_filtered %>% slice(i))
+}
+toc()
+
+}
+
+```
+
+```{r read par}
+
+## To do: pull in voltage and rain as well then pivot_wider()
+read_par <- function(name){
+  
+  plot_from_filename = stringr::str_extract(name, "(?<=_)[^_]+(?=_)")
+  
+  read_csv(paste0(raw_data_path, name)) %>% 
+  clean_names() %>% 
+    mutate() %>% 
+  filter(grepl("wx_slr_fd15", research_name)) %>% 
+    mutate(datetime_est = force_tz(timestamp, tzone = common_tz), 
+           plot = plot_from_filename) %>% 
+  dplyr::select(datetime_est, value, contains("f_")) %>% 
+  rename("slr_fd" = value)
+}
+
+##Bind data together and filter out the data we definitely won't need.
+par_raw <- l1_file_list_filtered$name %>%
+  map(read_par) %>%
+  bind_rows() %>% 
+  filter(datetime_est >= min(sapflow_joined$datetime_est) & 
+           datetime_est <= max(sapflow_joined$datetime_est))
+
+ggplot(par_raw, aes(datetime_est, slr_fd)) + geom_line()
+```
+
+We'll put PAR aside for now, but will see if there are correlations later to explain any potential variability in sapflow.
+
+
+```{r}
+
+```
+
+
+
+
+

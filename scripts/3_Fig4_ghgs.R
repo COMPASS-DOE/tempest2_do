@@ -14,7 +14,7 @@
 source("scripts/0_0_setup.R")
 
 
-# 2. Read in data --------------------------------------------------------------
+# 2. Soil CO2 fluxes -----------------------------------------------------------
 
 ghg_path = "data/raw_data/ghgs/"
 
@@ -25,32 +25,55 @@ soil_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_soil_nickworking.csv")) %>%
   mutate(condition = str_to_sentence(str_replace_all(condition, "-", ""))) %>% 
   mutate(condition = fct_relevel(condition, "Preflood"))
 
-soil_ghg %>% 
-  mutate(datetime = parsedate::parse_date(paste(date, time))) %>% 
-  ggplot(aes(datetime, co2_umol_m2_s, group = collar)) + 
-  geom_point() + 
-  facet_wrap(~plot, ncol = 1)
+# soil_ghg %>% 
+#   mutate(datetime = parsedate::parse_date(paste(date, time))) %>% 
+#   ggplot(aes(datetime, co2_umol_m2_s, group = collar)) + 
+#   geom_point() + 
+#   facet_wrap(~plot, ncol = 1)
 
-tree_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_trees_processed.csv")) %>% 
-  clean_names() %>% 
-  filter(!is.na(timepoint)) %>% 
-  mutate(timepoint_dbl = str_sub(timepoint, 2)) %>% 
-  mutate(condition = str_to_sentence(str_replace_all(condition, "-", ""))) %>% 
-  mutate(condition = fct_relevel(condition, "Preflood"))
+# tree_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_trees_processed.csv")) %>% 
+#   clean_names() %>% 
+#   filter(!is.na(timepoint)) %>% 
+#   mutate(timepoint_dbl = str_sub(timepoint, 2)) %>% 
+#   mutate(condition = str_to_sentence(str_replace_all(condition, "-", ""))) %>% 
+#   mutate(condition = fct_relevel(condition, "Preflood"))
 
 # comparisons = list(c("pre-flood", "flood"), 
 #                    c("pre-flood", "post-flood"), 
 #                    c("flood", "post-flood"))
 
-ggplot(soil_ghg, aes(condition, co2_umol_m2_min)) + 
+p_fluxes <- ggplot(soil_ghg, aes(condition, co2_umol_m2_min)) + 
   geom_boxplot(aes(fill = condition), show.legend = F, outlier.alpha = 0, alpha = 0.5) + 
   geom_jitter(alpha = 0.5, width = 0.1) + 
   facet_wrap(~plot, nrow = 1) +
   geom_tukey(where = "whisker") + 
   labs(x = "", y = "Soil CO2 flux (umol/m2/min)") + 
   scale_fill_viridis_d() 
-ggsave("figures/4_soil_ghgs.png", width = 7, height = 4)
-ggsave("figures/4_soil_ghgs.pdf", width = 7, height = 4)
+
+
+# 3. Soil CO2 concentrations ---------------------------------------------------
+
+sgw <- read_csv("data/240909_soil_ghg_concentrations.csv") %>% 
+  mutate(datetime_est = force_tz(datetime_est, tz = common_tz)) %>% 
+  mutate(condition = case_when(datetime_est < dump_start1 ~ "0_preflood", 
+                               datetime_est > dump_end2 ~ "2_postflood", 
+                            TRUE ~ "1_flood")) 
+
+## Double-check things are assigned correctly
+ggplot(sgw, aes(datetime_est, co2_conc_ppm_dilcorr, color = condition)) + 
+  geom_point()
+
+p_conc <- ggplot(sgw, aes(condition, co2_conc_ppm_dilcorr)) + 
+  geom_boxplot(aes(fill = condition), show.legend = F, outlier.alpha = 0, alpha = 0.5) + 
+  geom_jitter(alpha = 0.5, width = 0.1) + 
+  facet_wrap(~sample_plot, nrow = 1) +
+  geom_tukey(where = "whisker") + 
+  labs(x = "", y = "Soil CO2 concentration (ppm)") + 
+  scale_fill_viridis_d() 
+
+plot_grid(p_fluxes, p_conc, align = "hv", ncol = 1, labels = c("A", "B"))
+ggsave("figures/4_soil_ghgs.png", width = 8, height = 7)
+ggsave("figures/4_soil_ghgs.pdf", width = 8, height = 7)
 
 ## Add in stats for results section
 soil_ghg %>% 

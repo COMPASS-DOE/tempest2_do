@@ -18,7 +18,7 @@ source("scripts/0_0_setup.R")
 # 2. Read in datasets ----------------------------------------------------------
 
 ## Read in raw sapflow
-sapflow <- read_csv("data/240806_sapflow_worked_up.csv") %>% 
+sapflow <- read_csv("data/241125_sapflow_by_spp.csv") %>% 
   mutate(period_fct = factor(case_when(period == "0_preflood" ~ "Preflood", 
                                 period == "2_postflood" ~ "Postflood"), 
                                 levels = c("Preflood", "Postflood")))
@@ -58,12 +58,13 @@ p_sapflow <- sapflow %>%
   geom_jitter(alpha = 0.5, width = 0.1) + 
   facet_wrap(~plot, nrow = 1) + 
   geom_hline(yintercept = 0) + 
+  scale_y_continuous(limits = c(-2, 3.3)) + 
   scale_color_manual(values = colors[2:3]) +
   scale_fill_manual(values = colors[2:3]) +
   scale_alpha_manual(values = alphas[c(1,3)]) +
   geom_tukey(where = "whisker", vjust = -2, hjust = -1) +
   #stat_compare_means(label = "p.signif") + 
-  labs(x = "", y = "Sapflux density (?)") #+ 
+  labs(x = "", y = "Sapflux density (g/m2/s)") #+ 
   # theme(legend.position = "top",
   #   legend.title = element_blank(),
   #   legend.text = element_text(size = 12),

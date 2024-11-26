@@ -73,7 +73,6 @@ days_after = 14
 
 ```
 
-
 ```{r Read in L1 data}
 
 ## To do: pull in voltage and rain as well then pivot_wider()
@@ -83,11 +82,11 @@ read_sapflow <- function(name){
   
   read_csv(paste0(raw_data_path, name)) %>% 
   clean_names() %>% 
-    mutate() %>% 
+    rename("datetime_raw" = timestamp) %>% 
   filter(grepl("sapflow", research_name)) %>% 
-    mutate(datetime_est = force_tz(timestamp, tzone = common_tz), 
+    mutate(datetime_est = force_tz(datetime_raw, tzone = common_tz), 
            plot = plot_from_filename) %>% 
-  dplyr::select(datetime_est, plot, location, instrument_id, sensor_id, value, contains("f_")) %>% 
+  dplyr::select(datetime_raw, datetime_est, plot, location, instrument_id, sensor_id, value, contains("f_")) %>% 
   rename("sapflow_mv" = value)
 }
 
@@ -208,7 +207,7 @@ ggplot(sapflow_qc2_initial, aes(datetime_est, sapflow_mv, color = sensor_id)) +
   facet_wrap(~plot, ncol = 1)
 ```
 
-We are getting closer, but there are some days tht re visually apparent anamolies that we should scrub. These include June 12, and then anything after ~ June 21
+We are getting closer, but there are some days tht re visually apparent anamolies that we should scrub. These include June 12, and then anything after \~ June 21
 
 ```{r}
 
@@ -229,6 +228,7 @@ ggplot(sapflow_qc2_initial, aes(datetime_est, sapflow_mv, color = sensor_id)) +
   facet_wrap(~plot, ncol = 1)
 
 ```
+
 After removing those issues as well, this is our cleaned dataset after Step 2
 
 ```{r}
@@ -245,16 +245,15 @@ ggplot(sapflow_qc2_final, aes(datetime_est, sapflow_mv, color = sensor_id)) +
 
 ```
 
-
 #### QC Step 3: visual examination {.tabset}
 
 These data are starting to look good, so let's look at individual sensors and see if there are any potential issues with jumps or trends or any other non-normalities we should pay attention to. Based on visual identification, the following sensors are sus for the following reasons:
 
- - F10: non-linear behavior
- - F20: high (values above 0.7)
- - C10: high (values above 0.8)
- - S2: linear trend
- - S8: linear trend
+-   F10: non-linear behavior
+-   F20: high (values above 0.7)
+-   C10: high (values above 0.8)
+-   S2: linear trend
+-   S8: linear trend
 
 ```{r results='asis', eval = FALSE}
 
@@ -279,8 +278,7 @@ for (i in 1:length(selected_plot)){
 
 ```
 
-####
-
+#### 
 
 ```{r}
 
@@ -295,7 +293,7 @@ sensors_to_cull = c("F8", #trending down
                     "S14") #flatlined during pre
 
 sapflow_qc3 <- sapflow_qc2_final %>% 
-  filter(!(sensor_id %in% sensors_to_cull))
+  filter(!(sensor_id %in% sensors_to_cull)) 
 
 ggplot(sapflow_qc3, aes(datetime_est, sapflow_mv, color = sensor_id)) + 
   geom_line() + 
@@ -303,11 +301,12 @@ ggplot(sapflow_qc3, aes(datetime_est, sapflow_mv, color = sensor_id)) +
   geom_vline(xintercept = dump_start2, linetype = "dashed") + 
   facet_wrap(~plot, ncol = 1)
 
+sapflow_final <- sapflow_qc3 %>% 
+  mutate(datetime_raw = as.character(datetime_raw), 
+         datetime_est = as.character(datetime_est))
 
 ## We will save this dataset as "unbinned" 
-write_csv(sapflow_qc3, "../data/240717_sapflow_final_unbinned.csv")
+write_csv(sapflow_final, "../data/240717_sapflow_final_unbinned.csv")
 ```
 
-Final data are exported as *240717_sapflow_final_unbinned.csv* in the *data* folder
-
-
+Final data are exported as **240717_sapflow_final_unbinned.csv** in the **data** folder
