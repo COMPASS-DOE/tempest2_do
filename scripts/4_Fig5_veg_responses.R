@@ -31,6 +31,16 @@ tree_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_trees_processed.csv")) %>%
   mutate(condition = str_to_sentence(str_replace_all(condition, "-", ""))) %>% 
   mutate(period_fct = factor(condition, levels = c("Preflood", "Flooded", "Postflood")))
 
+tgw <- read_csv(paste0(ghg_path, "TEMPEST_TGW_2023_AllData.csv")) %>% 
+  clean_names() %>% 
+  #slice(1:5) %>% 
+  mutate(sample_time = sprintf("%04d", sample_time),  # Ensure time is in HHMM format
+         sample_hour = substr(sample_time, 1, 2),
+         sample_minute = substr(sample_time, 3, 4)) %>% 
+  mutate(datetime_edt = ymd_hm(paste(sample_year, sample_month, sample_day, sample_hour, sample_minute), tz = "America/New_York"))
+
+
+
 ## Read in vegetation metrics
 ## ci = intercellular CO2 (ppm)
 ## gs = stomatal conductance (mol m-2 s-1)

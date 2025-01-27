@@ -108,6 +108,3 @@ save_plot(do_plot, "3_do")
 redox_plot
 save_plot(redox_plot, "4_redox")
 
-
-
-

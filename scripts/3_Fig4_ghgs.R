@@ -121,6 +121,40 @@ plot_grid(p1, p2, p3, ncol = 1)
 ggsave("figures/se_ghgs.png", width = 7, height = 10)
 
 
+tree_ghg_conc <- read_csv("data/raw_data/swilson_ghg_concentrations/TEMPEST_TGW_2023_AllData.csv") %>% 
+  clean_names() %>% 
+  mutate(date = as_date(parsedate::parse_date(paste(sample_month, sample_day, sample_year)))) %>% 
+  mutate(hours = sample_time %/% 100,
+    minutes = sample_time %% 100,
+    time_hms = sprintf("%02d:%02d:00", hours, minutes)) %>%
+  select(-hours, -minutes) %>% 
+  mutate(datetime_est = parsedate::parse_date(paste(date, time_hms)) - hours(1)) %>% 
+  dplyr::select(datetime_est, date, time_hms, sample_plot, tree_id, 
+                co2_conc_ppm_dilcorr, ch4_conc_ppm_dilcorr) %>% 
+  mutate(condition = case_when(datetime_est < dump_start1 ~ "0_preflood", 
+                               datetime_est > dump_end2 ~ "2_postflood", 
+                               TRUE ~ "1_flood")) 
+
+tree_ghg_conc %>% 
+  filter(datetime_est > dump_start1 - days(5) & 
+           datetime_est < dump_end2 + days(5)) %>% 
+  ggplot(aes(datetime_est, co2_conc_ppm_dilcorr, color = condition)) + 
+  geom_point() +
+  facet_wrap(~sample_plot, ncol = 1)
+
+tree_ghg_conc %>% 
+  filter(datetime_est > dump_start1 - days(5) & 
+           datetime_est < dump_end2 + days(5)) %>% 
+  ggplot(aes(condition, co2_conc_ppm_dilcorr, fill = condition)) + 
+  geom_boxplot() + 
+  geom_jitter() + 
+  geom_tukey(where = "whisker") + 
+  facet_wrap(~sample_plot, nrow = 1)
+ggsave("figures/se_tree_stem_ghg_concentrations.png", width = 7, height = 4)
+
+
+
+
 
 
 
