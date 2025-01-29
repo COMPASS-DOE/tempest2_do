@@ -54,18 +54,76 @@ sapflow_raw <- all_files %>%
 
 # 3. Read in BP and PAR --------------------------------------------------------
 
-# bp_files <- all_files[grepl("GCW", all_files)]
-# 
-# read_in_bp <- function(f) {
-#   
-#   message("Reading ", basename(f))
-#   
-#   variables <- c("wx_tempavg15", "wx_par_den15")
-#   
-#   read_csv(f) %>% 
-#     clean_names() %>% 
-#     filter(research_name %in% variables)
-# }
+list_gcw_files <- function(folder){
+  list.files(paste0("data/l1_raw_files/GCW/", folder), 
+             pattern = ".csv", 
+             recursive = TRUE, 
+             full.names = TRUE)
+}
+
+folders <- c("GCW_2021", "GCW_2022", "GCW_2023")
+
+gcw_files <- unlist(lapply(folders, list_gcw_files))
+
+## From the metadata: 
+#
+# wx_par_den15 (µmol/m2/s): Average photosynthetically active radiation (PAR) 
+# flux density over 15 minute period; site specific correction factor applied   
+#
+# wx_gcrew_rain15 (cm): Total rain over 15 minute period IN CENTIMETERS; from the 
+# GCREW met station and only appears at GCW-W
+
+read_in_gcw <- function(f) {
+
+  message("Reading ", basename(f))
+
+  variables <- c("wx_gcrew_rain15", "wx_par_den15")
+
+  read_csv(f) %>%
+    clean_names() %>%
+    filter(research_name %in% variables) %>% 
+    dplyr::select(timestamp, research_name, value) %>% 
+    mutate(research_name = case_when(research_name == "wx_par_den15" ~ "par15", 
+                                     research_name == "wx_gcrew_rain15" ~ "rain15")) %>% 
+    pivot_wider(names_from = "research_name", values_from = "value")
+}
+
+par_and_rain <- gcw_files %>% 
+  map(read_in_gcw) %>% 
+  bind_rows()
+
+par_and_rain_doy <- par_and_rain %>% 
+  mutate(date = as_date(timestamp), 
+         hour = hour(timestamp)) %>% 
+  mutate(par_umol_m2_day = par15 / (60*60*24)) %>% 
+  group_by(date) %>% 
+  summarize(rain_cm_day = sum(rain15, na.rm = T), 
+            par_mean = mean(par15, na.rm = T), 
+            par_mean_11to12 = mean(par15[hour >= 11 & hour <= 12], na.rm = TRUE))
+
+## Use the plots below to visually determine what "rainy" and "cloudy" mean
+cloudy_threshold = 500
+rainy_threshold = 1
+
+ggplot(par_and_rain_doy, aes(date, par_mean_11to12)) + 
+  geom_point(color = "gray") + 
+  geom_hline(yintercept = cloudy_threshold) + 
+  geom_point(data = par_and_rain_doy %>% 
+               filter(par_mean_11to12 < cloudy_threshold), 
+             color = "red") + 
+  ggtitle("Gray = retained, Red = removed")
+
+ggplot(par_and_rain_doy, aes(date, rain_cm_day)) + 
+  geom_point(color = "gray") + 
+  geom_hline(yintercept = rainy_threshold) + 
+  geom_point(data = par_and_rain_doy %>% 
+               filter(rain_cm_day > rainy_threshold), 
+             color = "red") + 
+  ggtitle("Gray = retained, Red = removed")
+
+dates_with_good_weather <- par_and_rain_doy %>% 
+  filter(par_mean_11to12 > cloudy_threshold) %>% #PAR is high enough
+  filter(rain_cm_day < rainy_threshold) #Less than 1cm of rain
 
 
 # 4. Combine datasets ----------------------------------------------------------
@@ -173,10 +231,12 @@ ggplot(sf_plot_avg) +
   facet_wrap(~plot, ncol = 1, scales = "fixed") + 
   labs(y = "Avg Sap Flux Density", x = "Date", title = "Sap Flux Density Averaged Daily, 11 AM - 12 PM")
 
+sf_plot_clean <- sf_plot_avg %>% 
+  filter(Date %in% dates_with_good_weather$date)
 
-roll_length = 30
+roll_length = 10
 
-sf_rollmean <- sf_plot_avg %>% 
+sf_rollmean <- sf_plot_clean %>% 
   clean_names() %>% 
   ungroup() %>% 
   group_by(plot, species) %>% 
@@ -194,6 +254,23 @@ sf_rollmean %>%
              nrow = 3)
 
 sf_filtered <- sf_rollmean %>% 
+  filter(year == 2023) 
+
+sf_filtered %>% 
+  ggplot(aes(date, color = plot)) + 
+  geom_point(aes(y = f_avg), alpha = 0.1) +
+  geom_line(aes(y = f_roll)) +
+  geom_vline(xintercept = as_date(flood1), linetype = "dashed") + 
+  facet_wrap(~species, ncol = 1) + 
+  labs(x = "", y = "Sapflux (cm/s)", color = "") + 
+  theme(legend.background = element_blank(), 
+        legend.position = "bottom")
+ggsave("figures/X_2023_sapflow.png", width = 5, height = 7)
+
+
+
+sf_filtered <- sf_rollmean %>% 
+  filter(year == 2023) %>% 
   filter(doy > 250 & doy < 325) %>% 
   filter(species == "Tulip Poplar") 
 
