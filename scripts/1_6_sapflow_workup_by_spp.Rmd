@@ -221,6 +221,11 @@ sapflow_fd_n1 %>%
   facet_wrap(species~plot, nrow = 3)
 ```
 
+```{r}
+write_csv(sapflow_fd_n1, "../data/250306_sapflow_n1_by_species.csv")
+```
+
+
 #### Normalize to control plot (Figure 3C)
 
 Now for the second normalization: we'll subtract the value of Control for each day from the value for each Treatment plot:
