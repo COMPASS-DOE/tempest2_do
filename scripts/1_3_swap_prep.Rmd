@@ -1,0 +1,464 @@
+---
+title: "SWAP data prep"
+author: "PR"
+date: "2024-03-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      message = F, 
+                      warning = F)
+```
+
+### General purpose
+
+I'm creating Rmds for each of the datastreams used in this project. Because our deployments were a little complex, and both SWAP and Firesting datasets were somewhat cobbled together, it's important to document as many details as possible as clearly as possible in order to streamline QC, clearly ID and explain any data decisions, and make the methods section easy to write.
+
+### SWAP deployment
+
+We deployed a total of 15 SWAP sensor rods and 6 SWAP reference electrodes across the plots for TEMPEST 2 (June 2023). All three plots were outfitted in the same way: 1 nest of 5 SWAP rods with electrodes at 15, 25, 40, and 60 cm in an approximate circle. All rods were installed 10 cm too shallow, so actual measurement depths were at 5, 15, 30, and 50 cm. 5, 15, and 30 cm depths match TEROS, and 5 and 30 cm match Firesting endmembers. As a quick note for TEMPEST 3: we should deploy our DO sensors at 5, 15, 30, and 50 cm to match SWAP (if using swap). Each nest had two reference electrodes deployed across the circle from each other at \~ 10 cm depth. All sensors were controlled via dataloggers powered by isolated circuits (separate batteries), and all times are reported as EST (GMT - 5) as with all other datalogger datasets.
+
+```{r Setup}
+## First, load setup script to set up environment
+source("../scripts/0_0_setup.R")
+
+```
+
+```{r Read in datasets}
+
+### Notes from Loggernet to keep things straight
+## Control is PB81, logger is labeled CR1000
+## FW is PB82, logger is labeled CR1000_2
+## SW is PB83, logger is labeled CR1000_3
+
+read_swap <- function(path){
+  read_delim(path, skip = 1) %>% 
+    slice(3:n()) %>% 
+    mutate(across(c(contains("Batt"), contains("Redox")), as.numeric)) %>% 
+    clean_names() %>% 
+    mutate(datetime = lubridate::as_datetime(timestamp, tz = common_tz)) 
+}
+
+swap_list <- list.files(path = "../data/raw_data/swap/", pattern = ".dat", full.names = "T")
+
+control <- read_swap(swap_list[grepl("81", swap_list)]) %>%
+  mutate(plot = "Control")
+
+fw <- read_swap("../data/raw_data/swap/CR1000_2_Table1.dat") %>%
+  mutate(plot = "Freshwater")
+
+sw <- read_swap(swap_list[grepl("83", swap_list)]) %>%
+  mutate(plot = "Estuarine")
+```
+
+```{r merge and label depths}
+
+set_depths <- function(data){
+  data %>% 
+    pivot_longer(cols = contains("redox_"), names_to = "sensor", values_to = "redox_mv") %>% 
+    separate(sensor, into = c("scrap", "ref", "sensor"), sep = "_") %>% 
+    mutate(depth_cm = case_when(sensor == "1" | sensor == "5" | sensor == "9" | sensor == "13" | sensor == "17" ~ 5, 
+                             sensor == "2" | sensor == "6" | sensor == "10" | sensor == "14" | sensor == "18" ~ 15, 
+                             sensor == "3" | sensor == "7" | sensor == "11" | sensor == "15" | sensor == "19" ~ 30, 
+                             sensor == "4" | sensor == "8" | sensor == "12" | sensor == "16" | sensor == "20" ~ 50,
+                             TRUE ~ 0)) %>% 
+    select(-c(statname, scrap, timestamp))
+}
+  
+df_raw <- bind_rows(set_depths(control), 
+                    set_depths(fw), 
+                    set_depths(sw)) %>% 
+  filter(datetime > pre_event_start & 
+           datetime < post_event_end)
+
+ggplot(df_raw, aes(datetime, redox_mv, group = sensor, color = ref)) + 
+  geom_line() + 
+  facet_grid(plot~depth_cm)
+```
+
+## Because Control looks weird, let's zoom in, I'm not quite sure why the data look the way they do, but when separate by reference electrode, data look fine
+
+```{r}
+df_raw %>% 
+  filter(plot == "Control" & depth_cm == 15) %>% 
+  ggplot(aes(datetime, redox_mv, group = sensor, color = ref)) + 
+  geom_line() + 
+  facet_wrap(~ref, nrow = 1)
+```
+
+### QC
+
+#### QC Step 1: Picking a reference electrode {.tabset}
+
+There are two reference electrodes in each plot, and they should theoretically be reading the same thing. Electrode measurements are useless without the reference electrode, so it's up to us to figure out which reference electrode is most trustworthy for each site. In the example above, it's clear that reference B ('rb') is seeing strong diurnal variability, and is not reading correctly prior to 6/6, while reference A is doing about what we'd expect for the Control plot. Let's look at all plots together to determine which reference makes the most sense for each plot.
+
+##### 5 cm
+
+```{r}
+
+plot_by_reference_and_depth <- function(depth){
+  df_raw %>% 
+  filter(depth_cm == depth) %>% 
+  ggplot(aes(datetime, redox_mv, group = sensor, color = ref)) + 
+  geom_line() + 
+  facet_wrap(plot~ref, ncol = 2)
+}
+
+plot_by_reference_and_depth(5)
+```
+
+##### 15 cm
+
+```{r}
+plot_by_reference_and_depth(15)
+```
+
+##### 30 cm
+
+```{r}
+plot_by_reference_and_depth(30)
+```
+
+##### 50 cm
+
+```{r}
+plot_by_reference_and_depth(50)
+```
+
+#### 
+
+Based first on 50 cm, which is the least influenced by flooding (so treatment plots and control plot should be similar patterns), we can see that *Control rb* has different patterns than the other 5 reference-plot combos, so we should use ra in Control. However, it's a little unclear visually how we should decide ra v rb for Estuarine and Freshwater plots. Let's create some plots to compare:
+
+```{r}
+df_raw %>% 
+  select(datetime, sensor, ref, plot, depth_cm, redox_mv) %>% 
+  group_by(datetime, plot, sensor) %>% 
+  pivot_wider(names_from = ref, values_from = redox_mv) %>% 
+  unnest() %>% 
+  ggplot(aes(ra, rb, color = depth_cm)) + 
+  geom_point() + 
+  facet_wrap(~plot)
+```
+
+\n
+
+If we assume that redox should generally fall along the 1:1 line, and that the excursions are diagnostic of less "real" data, it appears that ra generally does "better" than rb. Since we don't have a real ground-truth, we'll go with ra across the board, partially based on the plot above, partially based on simple cross-site consistency.
+
+### **Decision 1:** Use the **ra** reference
+
+```{r Use ra instead of rb}
+
+df_qc1 <- df_raw %>% 
+  filter(ref == "ra")
+
+```
+
+# 
+
+Our dataset currently looks like this, and there are a couple things left to address:
+
+1.  early deployment equilibration artifacts that need to be trimmed off
+2.  error zero values (hard to see, but they're there...) that need to be removed
+3.  conversion of raw redox values to a standard reference (Eh)
+4.  how to average (mean v median) across different sensors for the same depth/plot
+
+```{r plot df_qc1}
+
+ggplot(df_qc1, aes(datetime, redox_mv, color = as.factor(sensor))) + 
+  geom_line() + 
+  facet_wrap(~plot)
+
+```
+
+#### QC Step 2: Remove erroneous zeros {.tabset}
+
+Let's do the easy stuff first. Here's how the time-series look with all the redox_mv = 0 values labeled as points:
+
+##### Control
+
+```{r}
+
+plot_zeros <- function(x, selected_plot){
+  x %>% 
+  filter(plot == selected_plot) %>% 
+  ggplot(aes(datetime, redox_mv, color = sensor)) + 
+  geom_line() + 
+  geom_point(data = x %>% filter(plot == selected_plot) %>% filter(redox_mv == 0)) +
+  facet_wrap(~depth_cm)
+}
+
+plot_zeros(df_qc1, "Control")
+```
+
+##### Freshwater
+
+```{r}
+plot_zeros(df_qc1, "Freshwater")
+```
+
+##### Estuarine
+
+```{r}
+plot_zeros(df_qc1, "Estuarine")
+```
+
+#### 
+
+####  {.tabset}
+
+We will remove all values that are 0 and gapfill. Note that this will overwrite a couple values that just happen to be 0 (e.g., see Freshwater 5 and 15 cm), but since those values have sensible values on either side, this will not dramatically alter any of our results, particularly since this is prior to binning.
+
+```{r remove then gapfill zeros}
+
+df_qc2 <- df_qc1 %>% 
+  ungroup() %>% 
+  group_by(sensor, plot) %>% 
+  mutate(redox_mv = ifelse(redox_mv == 0, NA, redox_mv)) %>% 
+  tidyr::fill(redox_mv, .direction = "updown")
+```
+
+##### Control
+
+```{r}
+plot_zeros(df_qc2, "Control")
+```
+
+##### Freshwater
+
+```{r}
+plot_zeros(df_qc2, "Freshwater")
+```
+
+##### Estuarine
+
+```{r}
+plot_zeros(df_qc2, "Estuarine")
+```
+
+### **Decision 2:** Replace all zeros with gap-filled values
+
+# 
+
+#### QC Step 3: Remove pre-equilibration chunks {.tabset}
+
+Because we know these data aren't trustworthy, and because they make it hard to see the structure of our good data, we'll remove this first. The question is where to cut, so let's take an expanded view:
+
+```{r view start of deployment}
+
+df_qc2 %>% 
+  #filter(datetime > "2023-06-06" & datetime < "2023-06-08") %>% 
+  ggplot(aes(datetime, redox_mv, color = sensor)) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+#ggsave("../figures/240404_raw_redox_dan.png", width = 10, height = 9)
+
+```
+
+\n
+
+One easy first step here is we deployed sensors at slightly different times. Since our goal is to compare things apples-to-apples (as much as possible), we can use Contro, which starts on 6/5 at 16:35 as our first cut.
+
+```{r}
+df_qc2 %>% 
+  filter(datetime > "2023-06-05 16:35:00") %>% 
+  ggplot(aes(datetime, redox_mv, color = sensor)) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+```
+
+\n
+
+That helps by removing the first initial spike in Freshwater. However, we also have issues with numerous sensors, particularly in Freshwater, that result in exaggerated values (\>1000 mV). These appear to be sensor-specific, so we'll tackle that next.
+
+```{r}
+df_qc3 <- df_qc2 %>% 
+  filter(datetime > "2023-06-05 16:35:00")
+```
+
+### **Decision 3:** Drop datetimes \<= "2023-06-05 16:35:00"
+
+# 
+
+#### QC Step 4: Select sensors to keep {.tabset}
+
+Now all the easy parts are done, and things are threatening to get subjective. I'm going to explore a couple solutions for cleaning these data in a reproducible, unbiased way. The reason we deploy 5 sensors at each depth for each plot is because 1) there is a lot of spatial heterogeneity to capture, but 2) electrodes are highly sensitive to where they're placed. Our goal here is to characterize the average behavior or redox, and so if one sensor is behaving very differently from the others, we can toss it. However, if the sensors are all doing their own thing, we'll need to establish common-sense rules or defend decisions with clear justifications. First, here's a closer look at sensors by plot and depth:
+
+Initial thoughts: 
+
+##### Control
+
+-   **5cm:** sensor #17 (green) is suspiciously high prior to 6/6 AM, and sensor #13 (gold) is suspiciously low relative to the other sensors.
+-   **15cm:** sensors generally look consistent
+-   **30cm:** sensor #7 (pink) might be suspiciously low, esp as we know this site likely did not experience large changes in redox. Sensor #3 (blue) is also (albeit less so) suspicious in the same way
+-   **50cm:** Sensor #8 (pink) is clearly different than the others. This is our clearest-cut candidate for removing.
+
+```{r}
+
+plot_by_sensor <- function(x, selected_plot){
+  
+  avgs <- x %>% 
+    ungroup() %>% 
+    filter(plot == selected_plot) %>% 
+    group_by(plot, datetime, depth_cm) %>% 
+    summarize(avg_redox = mean(redox_mv, na.rm = T))
+  
+  hf <- x %>% 
+    filter(plot == selected_plot)
+  
+  ggplot(hf, aes(datetime)) +
+        geom_line(data = avgs, aes(y = avg_redox), color = "black", lwd = 2, alpha = 0.4) +
+    geom_line(aes(y = redox_mv, color = sensor)) +
+    facet_wrap(~depth_cm, nrow = 1)
+}
+
+ggplotly(plot_by_sensor(df_qc3, "Control"))
+```
+
+##### Freshwater
+
+-   **5cm:** Sensor #13 (gold) is suspiciously high at the beginning, but then matches 17 closely. 
+-   **15cm:** Sensor #14 is suspiciously high at the beginning
+-   **30cm:** This is a little confusing: the same patterns, but temporally lagged...
+-   **50cm:** All consistent
+
+```{r}
+ggplotly(plot_by_sensor(df_qc3, "Freshwater"))
+```
+
+##### Estuarine
+
+-   **5cm:** Sensors #9 and #17 (red and green) are suspiciously high at the beginning
+-   **15cm:** 
+-   **30cm:** 
+-   **50cm:** 
+
+```{r}
+ggplotly(plot_by_sensor(df_qc3, "Estuarine"))
+```
+
+####
+
+\n
+
+The more I look at these, the more concerned I get about over-cleaning, or biased cleaning. Since the responses are quite variable, I think maybe the only fair thing is to 1) remove the only clearly anomalous sensor compared to the other 4 in that plot/depth (Control 8) and 2) remove known issues associated with deployment (i.e., sensors reading high, that drop off precipitously at the start of the deployment: Control 17, Freshwater 13 and 14, and Estuarine 9 and 17). 
+
+This still leaves us with a decision point to clarify: when do we cut off the 5 sensors mentioned above? Let's isolate them, and find a datetime threshold: 
+
+  - **Control** is good by 6/6 10:55
+  - **Freshwater** are both good by 6/6 6:10
+  - **Estuarine** are both good by 6/6 11:10
+
+```{r}
+ggplotly(df_qc3 %>% 
+  filter(plot == "Control" & sensor == 17 | 
+           plot == "Freshwater" & sensor == 13 | 
+           plot == "Freshwater" & sensor == 14 | 
+           plot == "Estuarine" & sensor == 9 | 
+           plot == "Estuarine" & sensor == 17) %>% 
+  ggplot(aes(datetime, redox_mv, color = interaction(plot, sensor))) + 
+    geom_line())
+```
+
+Let's remove the one known bad sensor, and the bad starting data for the 5 above: 
+
+```{r}
+df_qc4 <- df_qc3 %>% 
+  filter(!(plot == "Control" & sensor == 8)) %>% 
+  filter(!(plot == "Control" & sensor == 17 & datetime < "2023-06-06 10:55:00"| 
+           plot == "Freshwater" & sensor == 13  & datetime < "2023-06-06 06:10:00"| 
+           plot == "Freshwater" & sensor == 14  & datetime < "2023-06-06 06:10:00"| 
+           plot == "Estuarine" & sensor == 9  & datetime < "2023-06-06 11:10:00"| 
+           plot == "Estuarine" & sensor == 17 & datetime < "2023-06-06 11:10:00"))
+
+ggplot(df_qc4, aes(datetime, redox_mv, group = sensor)) + 
+  geom_line() + 
+  facet_wrap(depth_cm~plot, ncol = 3, scales = "free")
+  
+```
+
+### **Decision 4:** Drop Control sensor 8, and trim 5 sensors with longer equilibration times (detailed above)
+
+# 
+
+
+#### Final steps
+
+I believe this is the cleaned dataset, so only four steps remain, which are (in order):
+
+1. Convert to Eh
+2. Average (using mean: median jumps from sensor to sensor since we have 5 values at most points)
+3. Write out
+4. Plot final data
+
+
+Unfortunately, there is one more major hurdle, which is Eh requires knowing temperature, which we only have from TEROS, and that requires some gapfilling (i.e., no soil temperature at 50 cm). We'll plot those just for fun prior to joining datasets. Note that we make the assumption here that temperature at 50 cm = temperature at 30 cm. While that's wrong, I don't have a simple, defensible way to estimate that temperature differential. 
+
+```{r}
+
+join_cols = c("datetime", "plot", "depth_cm")
+
+teros <- read_csv("../data/240326_teros_final.csv") %>% 
+  mutate(datetime = force_tz(datetime, tzone = common_tz)) %>% 
+  rename("depth_cm" = depth) %>% 
+  mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                          TRUE ~ plot)) %>% 
+  select(all_of(join_cols), tsoil) %>%
+  group_by(datetime, plot) %>% 
+  complete(depth_cm = c(5, 15, 30, 50), fill = list(tsoil = NA)) %>% ## First, let's fill in 50 cm rows
+  fill(tsoil, .direction = "down")
+
+## Now create a list of all the possible rows
+teros_all_dates <- teros %>%
+  group_by(plot, depth_cm) %>%
+  complete(datetime = seq(min(datetime), max(datetime), by = "5 min")) %>% # add all potential rows
+  mutate(tsoil = approx(datetime, tsoil, datetime, rule = 2)$y) #thx Incubator!
+
+## Eh (mV) = ORP (mV) -0.718*T +224.41 
+df_final_unbinned <- df_qc4 %>%
+  left_join(teros_all_dates, by = c(join_cols)) %>%
+  mutate(eh_mv = redox_mv - (tsoil * .718) + 224.41) 
+
+df_final_binned <- df_final_unbinned %>% 
+  ungroup() %>% 
+  group_by(datetime, plot, depth_cm) %>% 
+  summarize(eh_mv = mean(eh_mv, na.rm = T)) %>% 
+  mutate(datetime_est = as.character(datetime))
+  
+df_final_binned
+write_csv(df_final_binned, "../data/240404_swap_final.csv")
+```
+
+#### Final plots of data! {.tabset}
+
+##### Control
+
+```{r}
+
+plot_final_data <- function(selected_plot){
+  df_final_binned %>% 
+    filter(plot == selected_plot) %>% 
+    ggplot(aes(datetime, eh_mv, color = as.factor(depth_cm))) + 
+    geom_hline(yintercept = 300, linetype = "dashed") + 
+    geom_hline(yintercept = 800, linetype = "dashed") + 
+    geom_hline(yintercept = 0) + 
+    geom_line() + 
+    scale_y_continuous(limits = c(0, 850))
+}
+
+plot_final_data("Control")
+```
+
+
+##### Freshwater
+
+```{r}
+plot_final_data("Freshwater")
+```
+
+
+##### Estuarine
+
+```{r}
+plot_final_data("Estuarine")
+```

@@ -191,6 +191,10 @@ x <- compare_pre_post_flood_by_depth(swap, eh_mv)
 firesting_hypoxia <- firesting %>%
   filter(do_percent_sat < 21) 
 
+firesting_anoxia <- firesting %>%
+  filter(do_percent_sat < 1) 
+
+
 firesting_hypoxia %>% 
   ggplot(aes(datetime_est, as.factor(depth), color = "do_percent_sat")) + 
   geom_point() + 
@@ -203,5 +207,12 @@ firesting_hypoxia %>%
   mutate(max_datetime - min_datetime)
 
 
+firesting_anoxia %>% 
+  group_by(depth, plot) %>% 
+  summarize(min_datetime = min(datetime_est), 
+            max_datetime = max(datetime_est)) %>% 
+  mutate(max_datetime - min_datetime)
+
+240300 / (3600 * 24)
 
 
