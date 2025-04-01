@@ -20,7 +20,7 @@ require(ggtukey)
 
 prep_csvs <- function(path){
   read_csv(path) %>% 
-    mutate(datetime_est = force_tz(datetime_est, tzon = common_tz)) %>% 
+    mutate(datetime_est = force_tz(datetime_est, tzone = common_tz)) %>% 
     mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
                             TRUE ~ plot)) %>% 
     label_flood_periods() %>% 

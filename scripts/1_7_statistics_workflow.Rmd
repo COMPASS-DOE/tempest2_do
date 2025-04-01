@@ -24,7 +24,14 @@ This is the statistics workflow for deciding what test to use. All tests are com
 
 ```{r setup}
 
+## Load setup script
+source("../scripts/0_0_setup.R")
 
+## Read in data
+teros <- prep_csvs("../data/240326_teros_final.csv")
+firesting <- prep_csvs("../data/240318_firesting_final.csv")
+swap <- prep_csvs("../data/240404_swap_final.csv") %>% 
+  rename("depth" = depth_cm)
 ```
 
 
