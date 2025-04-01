@@ -30,8 +30,6 @@ folders <- c("TMP_2021", "TMP_2022", "TMP_2023")
 
 all_files <- unlist(lapply(folders, list_tmp_files))
 
-#tmp_files <- all_files[grepl("TMP_2", all_files)]
-
 read_in_sapflow <- function(f) {
   
   message("Reading ", basename(f))
@@ -151,7 +149,7 @@ species <- sapflow_inventory %>%
 
 #First, isolate sapflow data
 sapflow_v0 <- sapflow_formatted %>% 
-  filter(value >= 0.01, value <=0.7) %>%
+  filter(value >= 0.01, value <= 0.7) %>%
   dplyr::select(plot, timestamp, sensor_id, value) %>%
   rename("sapflow_2.5cm" = value) %>% 
   mutate(date = date(timestamp))
