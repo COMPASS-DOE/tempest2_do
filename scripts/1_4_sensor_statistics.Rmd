@@ -1,0 +1,630 @@
+---
+title: "repeated_measures_anova"
+author: "PR"
+date: "2025-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      warning = F, 
+                      message = F)
+```
+
+### Purpose
+
+This markdown documents the workflow for calculating statistics for differences between plots for time-series datasets collected by sensors before/during/after the TEMPEST2 event.
+
+This all started which I naively thought I could just apply Tukey's HSD to time-series to compare between different time-periods, like this:
+
+```{r read in data}
+source("../scripts/0_0_setup.R")
+
+p_load(rstatix, 
+       car,
+       MASS,
+       bestNormalize,
+       multcompView,
+       knitr, 
+       kableExtra,
+       afex)
+
+label_flood_periods2 <- function(data){ 
+  
+  ## We are basing our interval off of the the flooding duration.
+  n_days = 2
+  
+  data %>% 
+    #mutate(datetime = force_tz(datetime_est, tz = common_tz)) %>% 
+    dplyr::mutate(period = case_when(datetime_est >= dump_start1 - days(n_days) & 
+                                datetime_est < dump_start1 ~ " Preflood", 
+                              datetime_est >= dump_start1 & 
+                                datetime_est < dump_start1 + days(n_days) ~ "Flood", 
+                              datetime_est >= dump_start1 + days(n_days) & 
+                                datetime_est < dump_start1 + days(3) ~ "Postflood", 
+                              TRUE ~ NA)) %>% 
+    dplyr::mutate(period2 = case_when(datetime_est >= dump_start1 - days(n_days) & 
+                                 datetime_est < dump_start1 ~ "1_preflood", 
+                               datetime_est >= dump_start1 & 
+                                 datetime_est < dump_start1 + days(n_days) ~ "2_flood", 
+                               datetime_est >= dump_start1 + days(n_days) & 
+                                 datetime_est < dump_start1 + days(3) ~ "3_postflood", 
+                               TRUE ~ NA))
+}
+
+prep_csvs <- function(path){
+  read_csv(path) %>% 
+    dplyr::mutate(datetime_est = force_tz(datetime_est, tzon = common_tz)) %>% 
+    dplyr::mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+                            TRUE ~ plot))  %>% 
+    label_flood_periods2() %>% 
+    filter(!is.na(period2)) %>% 
+    ungroup()
+}
+
+teros <- prep_csvs("../data/240326_teros_final.csv")
+firesting <- prep_csvs("../data/240318_firesting_final.csv")
+swap <- prep_csvs("../data/240404_swap_final.csv") %>% 
+  rename("depth" = depth_cm)
+
+summarize_by_depth <- function(data, var){
+  
+  var_sym <- ensym(var)  # Capture the variable name
+  
+  data %>% 
+  dplyr::select(plot, depth, period2, {{var}}) %>% 
+  group_by(plot, period2, depth) %>% 
+  summarize(min = min(!!var_sym, na.rm = T), 
+            mean = mean(!!var_sym, na.rm = T), 
+            max = max(!!var_sym, na.rm = T)) %>% 
+  mutate(variable = rlang::as_string(var_sym))
+}
+
+stats_by_depth_and_period <- bind_rows(summarize_by_depth(teros, vwc), 
+                                       summarize_by_depth(teros, ec),
+                                       summarize_by_depth(firesting, do_percent_sat),
+                                       summarize_by_depth(swap, eh_mv))
+write_csv(stats_by_depth_and_period, "../data/stats_by_depth_and_period.csv")
+
+```
+
+```{r ex dataset}
+ex_df <- teros %>% 
+  filter(depth == 5, plot == "Freshwater") 
+
+ex_df %>% 
+  ggplot(aes(period, vwc, fill = period)) + 
+  geom_boxplot() + 
+  geom_tukey(where = "whisker")
+  
+```
+
+Nice, simple, easy, and super violating of all assumptions. Crap.
+
+To get back to this level of statistical understanding while making sure our data meet the assumptions of the statistical tests we use, let's go on a journey. My goal: statistical significance (p-values) to compare how different periods relative to the flooding event compare.
+
+### Decision #1 - how to define our periods
+
+The first thing we'll need to decide is what are those periods. I'm defining these periods based on the duration of flooding - flooding lasted for 10 hours for each event, which started 24 hours apart. I'm choosing to not interpret inter-flood time as a separate category, or the floods as individual events, but rather the start of the first flood to the end of the second flood as the flooded period. This is 34 hours, which isn't nice and even, and because 1) we know that flooding impacts persisted after we turned the water off (ie inter-flood), and 2) we want to work in diurnal blocks to avoid any potential impact of diurnal cycles (i.e. capture the same portions of the same number of days between periods), we will call the flooding event 48 hours, starting when the water is turned on for the first flood, ending 24 hours after the start of the second flooding event. To keep things even, that means we'll call the 48 hours prior to the first flood our pre-flood period, and the 48 hours after the flood period as our post-flood period. Those are delineated in the plot above.
+
+Now that we've our periods defined, why can't we use Tukey's HSD? Well, Tukey's HSD is a post-hoc test used after an ANOVA, so the question should be, why can't we use an ANOVA?
+
+ANOVAs have three key assumptions:
+
+1.  Data are normally distributed
+2.  Groups have homogeneous variances
+3.  Data are independent
+
+For VWC in Freshwater at 5 cm:
+
+```{r ex stats}
+shapiro1 <- ex_df %>%
+    group_by(plot) %>%
+    shapiro_test(vwc) %>% 
+  pull(p)
+
+levene1 <- teros %>% 
+  filter(depth == 5) %>% 
+    levene_test(vwc ~ period2) %>% 
+  pull(p)
+
+print(paste("Shapiro-Wilk p-value:", shapiro1))
+print(paste("Levene's p-value:", levene1))
+```
+
+Shapiro-Wilk p\<0.05 rejects the assumption that the data are normally distributed Levene's p\<0.05 rejects the assumption that variance is homogenous between groups
+
+![](/Users/regi350/Downloads/ray_double_dukes.png) 
+
+\n
+
+Icing on the cake - time-series are not independent:
+
+```{r initial acf}
+acf(ex_df$vwc)
+```
+
+***So we violated all ANOVA assumptions. What can we do?***
+
+There are lots of non-parametric statistics for normality and homogeneity of variance assumptions, addressing the independence issue is trickier.
+
+### Decision #2 - Repeated measures ANOVA
+
+Repeated measures can be used address auto-correlation in datasets. I did not find a satisfactory solution for how this could be applied to different periods of one time-series, but it can be applied if time is your repeated measure ACROSS different time-series collected at the same time. So, instead of comparing pre-flood to flood, we can compare between plots for pre-flood, etc (comparisons are dashed vertical lines below):
+
+![](/Users/regi350/Library/CloudStorage/OneDrive-PNNL/Documents/GitHub/COMPASS-DOE/tempest2_do/figures/archive/timeseries_comparison.png)
+
+\n
+
+Let's impelement an ANOVA for pre-flood data for VWC, which we would assume is not significantly different, but it turns out it is...
+
+```{r initial anova}
+
+ex_df2 <- teros %>% 
+  filter(depth == 5, period2 == "1_preflood") %>% 
+  group_by(plot) %>% 
+  dplyr::mutate(index = 1:n())
+
+aov_model <- aov_ez(
+    id = "index",
+    dv = "vwc",
+    within = c("plot"),
+    data = ex_df2)
+
+aov_model
+```
+
+### Decision 3 - normalize to pre-flood mean {.tabset}
+
+I'm deciding to normalize all datasets by plot to the pre-flood values:
+
+```{r prep data for stats}
+prep_data <- function(data, var, bin_interval) {
+  var_sym <- ensym(var)
+  
+  processed_data <- data %>% 
+    group_by(plot, depth) %>% 
+    dplyr::mutate(avg_vwc_preflood = mean({{ var_sym }}[period2 == "1_preflood"], na.rm = TRUE)) %>% 
+    mutate(var_n_raw = {{ var_sym }} - avg_vwc_preflood) %>% 
+    ungroup() %>% 
+    dplyr::mutate(var_n = var_n_raw) %>%  # Note this is a convenience offset to look at log-transforms
+    group_by(plot, depth, period2) %>% 
+    ungroup() %>% 
+    dplyr::mutate(datetime_round = round_date(datetime_est, unit = bin_interval)) %>% 
+    group_by(plot, depth, period2, datetime_round) %>% 
+    summarize(var_n = mean(var_n)) %>% 
+    dplyr::mutate(index = row_number()) %>% 
+    ungroup() %>% 
+    dplyr::select(plot, depth, datetime_round, period2, index, var_n)
+  
+  return(processed_data)
+}
+
+## Make datasets for each analyte
+teros_vwc_raw <- prep_data(teros, vwc, "5 minutes") %>% 
+  rename("vwc_n" = var_n)
+teros_ec_raw <- prep_data(teros, ec, "5 minutes") %>% 
+  rename("ec_n" = var_n)
+firesting_do_raw <- prep_data(firesting, do_percent_sat, "5 minutes") %>% rename("do_percent_sat_n" = var_n)
+swap_eh_raw <- prep_data(swap, eh_mv, "5 minutes") %>% 
+  rename("eh_mv_n" = var_n)  
+```
+
+#### VWC
+
+```{r visualize vwc_n}
+teros_vwc_raw %>% 
+  ggplot(aes(index, vwc_n, color = plot)) + 
+  geom_line() + 
+  facet_wrap(period2~depth, scales = "free")
+```
+
+#### EC
+
+```{r visualize ec_n}
+teros_ec_raw %>% 
+  ggplot(aes(index, ec_n, color = plot)) + 
+  geom_line() + 
+  facet_wrap(period2~depth, scales = "free")
+```
+
+#### DO
+
+```{r visualize do_n}
+firesting_do_raw %>% 
+  ggplot(aes(index, do_percent_sat_n, color = plot)) + 
+  geom_line() + 
+  facet_wrap(period2~depth, scales = "free")
+```
+
+#### Eh
+
+```{r visualize eh_n}
+swap_eh_raw %>% 
+  ggplot(aes(index, eh_mv_n, color = plot)) + 
+  geom_line() + 
+  facet_wrap(period2~depth, scales = "free")
+```
+
+### 
+
+Let's rerun the ANOVA with our
+
+```{r second anova}
+
+ex_df3 <- teros_vwc_raw %>% 
+  filter(depth == 5, period2 == "1_preflood") %>% 
+  group_by(plot) %>% 
+  dplyr::mutate(index = 1:n())
+
+aov_model <- aov_ez(
+    id = "index",
+    dv = "vwc_n",
+    within = c("plot"),
+    data = ex_df3)
+
+aov_model
+```
+
+That looks much better! Now let's see if flooding also matches our assumption:
+
+```{r third anova}
+
+ex_df3 <- teros_vwc_raw %>% 
+  filter(depth == 5, period2 == "2_flood") %>% 
+  group_by(plot) %>% 
+  dplyr::mutate(index = 1:n())
+
+aov_model <- aov_ez(
+    id = "index",
+    dv = "vwc_n",
+    within = c("plot"),
+    data = ex_df3)
+
+aov_model
+```
+
+It does. And we could be done.
+
+### Testing assumptions {.tabset}
+
+EXCEPT. We need to check normality and homogeneity of variance. Unsurprisingly, we super-duper violate these (*I'll be presenting results with p-values on the y-axis since that's what I'm interested in. Confusing at first, but the horizontal line is our threshold of p=0.05, so values below are significant, values above are not*):
+
+```{r set up check assumptions function}
+
+check_assumptions <- function(data, dv, set_depth, set_period2) {
+  # Ensure depth and period2 are strings
+  dv_sym <- ensym(dv)
+  formula <- as.formula(paste(rlang::as_string(dv_sym), "~ plot"))  # Create the formula dynamically
+
+  # Filter data based on depth and period2
+  filtered_data <- data %>%
+    filter(depth == set_depth, period2 == set_period2)
+
+  # Ensure that there is data to test
+  if (nrow(filtered_data) == 0) {
+    warning(paste("No data available for depth =", set_depth, "and period2 =", set_period2))
+    return(tibble(plot = unique(data$plot), variable = as.character(dv_sym), p_shapiro = NA, p_levene = NA, depth = set_depth, period2 = set_period2))
+  }
+
+  # Check if all values are identical for each plot group
+  identical_values_per_plot <- filtered_data %>%
+    group_by(plot) %>%
+    summarise(n_unique = n_distinct(!!dv_sym)) %>%
+    filter(n_unique == 1)
+
+  if (nrow(identical_values_per_plot) > 0) {
+    warning(paste("All values are identical within one or more plots for depth =", set_depth, "and period2 =", set_period2))
+    return(tibble(plot = unique(filtered_data$plot), variable = as.character(dv_sym), p_shapiro = NA, p_levene = NA, depth = set_depth, period2 = set_period2))
+  }
+
+  # Shapiro-Wilk test with consistent output even if not performed
+  shapiro_results <- filtered_data %>%
+    group_by(plot) %>%
+    shapiro_test(!!dv_sym) %>% 
+    rename("p_shapiro" = p)
+
+  # Levene's test
+  levene_result <- filtered_data %>%
+    levene_test(formula)
+
+  # Combine Shapiro-Wilk results and Levene's results
+  shapiro_combined <- shapiro_results %>%
+    dplyr::select(-statistic) %>%
+    mutate(p_levene = levene_result$p) %>%
+    mutate(depth = set_depth, period2 = set_period2)
+
+  #return(shapiro_combined)
+  return(shapiro_combined)
+}
+
+
+```
+
+```{r check assumptions}
+
+## I tried so hard to wrap this function and I can't figure it out
+vwc_nobin <- expand_grid(depth = unique(teros_vwc_raw$depth), 
+                   period2 = unique(teros_vwc_raw$period2)) %>%
+  pmap(~check_assumptions(teros_vwc_raw, "vwc_n", ..1, ..2)) %>%
+  bind_rows()
+
+ec_nobin <- expand_grid(depth = unique(teros_ec_raw$depth),
+                   period2 = unique(teros_ec_raw$period2)) %>%
+  pmap(~check_assumptions(teros_ec_raw, "ec_n", ..1, ..2)) %>%
+  bind_rows()
+
+do_nobin <- expand_grid(depth = unique(firesting_do_raw$depth),
+                  period2 = unique(firesting_do_raw$period2)) %>%
+  #filter(depth != 5) %>% 
+  pmap(~check_assumptions(firesting_do_raw, "do_percent_sat_n", ..1, ..2)) %>%
+  bind_rows()
+
+eh_nobin <- expand_grid(depth = unique(swap_eh_raw$depth),
+                  period2 = unique(swap_eh_raw$period2)) %>%
+  pmap(~check_assumptions(swap_eh_raw, "eh_mv_n", ..1, ..2)) %>%
+  bind_rows()
+
+
+assumptions_df <- bind_rows(vwc_nobin, 
+                            ec_nobin, 
+                           do_nobin,
+                           eh_nobin)
+```
+
+#### Shapiro - normality
+
+```{r plot shapiro 2}
+ggplot(assumptions_df, aes(period2, p_shapiro, fill = plot)) + 
+            geom_boxplot() + 
+            geom_hline(yintercept = 0.01) + 
+            facet_wrap(~variable) + 
+            scale_y_sqrt()
+```
+
+#### Levene's - homogeneity
+
+```{r plot levenes 2}
+assumptions_df %>% 
+            dplyr::mutate(depth_period = paste0(depth, "_", period2)) %>% 
+            ggplot(aes(period2, p_levene, color = as.factor(depth), group = depth_period)) + 
+            geom_jitter(size = 5, alpha = 0.6, width = 0.3) + 
+            geom_hline(yintercept = 0.01) + 
+            facet_wrap(~variable) + 
+            scale_y_sqrt()
+```
+
+### 
+
+### Decision #4 - Binning {.tabset}
+
+So, to reduce auto-correlation, I messed around with binning, and realized that helps to normalize distributions and also helps (a little) with homogeneity. Here is our data binned to 4-hour averages (n=12 per group except where data were not started collecting 48 hours prior (DO and Eh):
+
+#### Shapiro - normality (binned)
+
+```{r bin data}
+
+interval = "4 hours"
+
+## Make datasets for each analyte
+teros_vwc <- prep_data(teros, vwc, interval) %>% rename("vwc_n" = var_n)
+teros_ec <- prep_data(teros, ec, interval) %>% rename("ec_n" = var_n)
+firesting_do <- prep_data(firesting, do_percent_sat, interval) %>% rename("do_percent_sat_n" = var_n)
+swap_eh <- prep_data(swap, eh_mv, interval) %>% rename("eh_mv_n" = var_n)  
+
+## I tried so hard to wrap this function and I can't figure it out
+vwc_bin <- expand_grid(depth = unique(teros_vwc$depth), 
+                   period2 = unique(teros_vwc$period2)) %>%
+  pmap(~check_assumptions(teros_vwc, "vwc_n", ..1, ..2)) %>%
+  bind_rows()
+
+ec_bin <- expand_grid(depth = unique(teros_ec$depth), 
+                   period2 = unique(teros_ec$period2)) %>%
+  pmap(~check_assumptions(teros_ec, "ec_n", ..1, ..2)) %>%
+  bind_rows()
+
+do_bin <- expand_grid(depth = unique(firesting_do$depth), 
+                  period2 = unique(firesting_do$period2)) %>%
+  pmap(~check_assumptions(firesting_do, "do_percent_sat_n", ..1, ..2)) %>%
+  bind_rows()
+
+eh_bin <- expand_grid(depth = unique(swap_eh$depth), 
+                  period2 = unique(swap_eh$period2)) %>%
+  pmap(~check_assumptions(swap_eh, "eh_mv_n", ..1, ..2)) %>%
+  bind_rows()
+
+assumptions_bin <- bind_rows(vwc_bin, ec_bin, do_bin, eh_bin)
+
+
+ggplot(assumptions_bin, aes(period2, p_shapiro, fill = plot)) + 
+            geom_boxplot() + 
+            geom_hline(yintercept = 0.01) + 
+            facet_wrap(~variable) + 
+            scale_y_sqrt()
+```
+
+#### Levene's - homogeneity (binned)
+
+```{r plot binned levenes}
+assumptions_bin %>% 
+            dplyr::mutate(depth_period = paste0(depth, "_", period2)) %>% 
+            ggplot(aes(period2, p_levene, color = as.factor(depth), group = depth_period)) + 
+            geom_jitter(size = 5, alpha = 0.6, width = 0.3) + 
+            geom_hline(yintercept = 0.01) + 
+            facet_wrap(~variable) + 
+            scale_y_sqrt()
+```
+
+### 
+
+This is all an improvement, but we still are not meeting the assumption of homogeneity of variance, which makes sense, since we see very different responses between plots during flooding. For context, here's the autocorrelation for the same dataset show above, but binned:
+
+```{r second acf}
+y <- teros_vwc %>% filter(depth == 5, plot == "Freshwater") 
+
+acf(y$vwc_n)
+```
+
+Because this looks much better, we're going to stick with binned data for coming analyses. This may not be strictly necessary since we're using repeated measures, but autocorrelation is my nemesis, and if we've got a way to reduce it, I think that's good regardless of the statistical approach used.
+
+So. Another fork in the road: A) dig into data normalization to find a way to neutralize homogeneity of variance, or B) find something non-parametric that's not making that assumption.
+
+### Decision #5 - Friedman Tests
+
+The Friedman rank sum test is a "non-parametric alternative to the one-way repeated neasures ANOVA test", exactly what we need.
+
+```{r run friedmans}
+run_friedman_test <- function(data, dv, set_depth, set_period2) {
+  
+  # Ensure depth and period2 are strings
+  dv_sym <- ensym(dv)
+  formula <- as.formula(paste(rlang::as_string(dv_sym), "~ plot | index"))  # Create the formula dynamically
+  
+  # Filter data based on depth and period2
+  test <- data %>%
+    filter(depth == set_depth, period2 == set_period2) %>% 
+    friedman_test(formula)
+  
+  tibble(variable = dv, 
+         depth = set_depth,
+         period2 = set_period2, 
+         p_friedman = test$p)
+}
+  
+vwc_friedman <- expand_grid(depth = unique(teros_vwc$depth), 
+                            period2 = unique(teros_vwc$period2)) %>%
+  pmap(~run_friedman_test(teros_vwc, "vwc_n", ..1, ..2)) %>%
+  bind_rows()
+
+ec_friedman <- expand_grid(depth = unique(teros_ec$depth), 
+                  period2 = unique(teros_ec$period2)) %>%
+  pmap(~run_friedman_test(teros_ec, "ec_n", ..1, ..2)) %>%
+  bind_rows()
+
+do_friedman <- expand_grid(depth = unique(firesting_do$depth), 
+                  period2 = unique(firesting_do$period2)) %>%
+  pmap(~run_friedman_test(firesting_do, "do_percent_sat_n", ..1, ..2)) %>%
+  bind_rows()
+
+eh_friedman <- expand_grid(depth = unique(swap_eh$depth), 
+                  period2 = unique(swap_eh$period2)) %>%
+  pmap(~run_friedman_test(swap_eh, "eh_mv_n", ..1, ..2)) %>%
+  bind_rows()
+
+friedman_df <- bind_rows(vwc_friedman, 
+                         ec_friedman, 
+                         do_friedman, 
+                         eh_friedman)
+
+```
+
+```{r plot friedman}
+friedman_df
+
+ggplot(friedman_df, aes(period2, p_friedman, fill = as.factor(depth))) + 
+  geom_col(position = "dodge") + 
+  facet_wrap(~variable) + 
+  geom_hline(yintercept = 0.05) + 
+  scale_y_sqrt()
+
+write_csv(friedman_df, "../data/250410_sensor_friedman_results.csv")
+```
+
+Home-stretch, let's follow up with Post-hoc pairwise tests to confirm which combinations are significantly different for each significant Friedman result:
+
+### Significant Wilcoxon results {.tabset}
+
+```{r run wilcoxon}
+run_wilcoxon_test <- function(data, dv, set_depth, set_period2) {
+  
+  # Ensure depth and period2 are strings
+  dv_sym <- ensym(dv)
+  formula <- as.formula(paste(rlang::as_string(dv_sym), "~ plot"))  # Create the formula dynamically
+  
+  # Filter data based on depth and period2
+  test <- data %>%
+    filter(depth == set_depth, period2 == set_period2) %>% 
+    wilcox_test(formula, p.adjust.method = "bonferroni") %>% 
+    rename("variable" = `.y.`) %>% 
+    clean_names()
+  
+  tibble(variable = dv, 
+         depth = set_depth,
+         period2 = set_period2, 
+         group1 = test$group1, 
+         group2 = test$group2,
+         p_adj = test$p_adj)
+}
+
+vwc_wilcoxon <- expand_grid(depth = unique(teros_vwc$depth), 
+                            period2 = unique(teros_vwc$period2)) %>%
+  pmap(~run_wilcoxon_test(teros_vwc, "vwc_n", ..1, ..2)) %>%
+  bind_rows()
+
+ec_wilcoxon <- expand_grid(depth = unique(teros_ec$depth), 
+                           period2 = unique(teros_ec$period2)) %>%
+  pmap(~run_wilcoxon_test(teros_ec, "ec_n", ..1, ..2)) %>%
+  bind_rows()
+
+do_wilcoxon <- expand_grid(depth = unique(firesting_do$depth), 
+                           period2 = unique(firesting_do$period2)) %>%
+  pmap(~run_wilcoxon_test(firesting_do, "do_percent_sat_n", ..1, ..2)) %>%
+  bind_rows()
+
+eh_wilcoxon <- expand_grid(depth = unique(swap_eh$depth), 
+                           period2 = unique(swap_eh$period2)) %>%
+  pmap(~run_wilcoxon_test(swap_eh, "eh_mv_n", ..1, ..2)) %>%
+  bind_rows()
+
+wilcoxon_df <- bind_rows(vwc_wilcoxon, 
+                         ec_wilcoxon, 
+                         do_wilcoxon, 
+                         eh_wilcoxon) %>% 
+  filter(p_adj < 0.05)
+
+write_csv(wilcoxon_df, "../data/250410_sensor_wilcoxon_results.csv")
+```
+
+#### VWC
+
+```{r wilcoxon for vwc}
+wilcoxon_df %>%
+  filter(variable == "vwc_n") %>% 
+  kable("html", caption = "Sample Table") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+#### EC
+
+```{r wilcoxon for ec}
+wilcoxon_df %>%
+  filter(variable == "ec_n") %>% 
+  kable("html", caption = "Sample Table") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+#### DO
+
+```{r wilcoxon for do}
+wilcoxon_df %>%
+  filter(variable == "do_percent_sat_n") %>% 
+  kable("html", caption = "Sample Table") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+#### Eh
+
+```{r wilcoxon for eh}
+wilcoxon_df %>%
+  filter(variable == "eh_mv_n") %>% 
+  kable("html", caption = "Sample Table") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+### 
+
+## tl;dr
+
+1.  Sensor time-series violate assumptions of independence, homogeneity of variance, and normality
+2.  Standard statistics (ANOVA) with adjustments (repeated measures, between plots instead of between periods) still violated the homogeneity assumption
+3.  Friedman Tests with repeated measures were used as a non-parametric alternative to ANOVA, followed by Wilcoxon as a non-parametric alternative for pairwise comparisons

@@ -19,8 +19,10 @@ source("scripts/0_0_setup.R")
 prep_csvs <- function(path){
   read_csv(path) %>% 
     mutate(datetime_est = force_tz(datetime_est, tzon = common_tz)) %>% 
-    mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
-                            TRUE ~ plot))
+    mutate(plot = as.factor(case_when(plot == "Seawater" ~ "Saltwater", 
+                            plot == "Estuarine" ~ "Saltwater", 
+                            TRUE ~ plot))) %>% 
+    mutate(plot = fct_relevel(plot, "Control", "Freshwater"))
 }
 
 ## Load processed datasets. Note that we should only use datetime_est
@@ -40,7 +42,8 @@ contour_height = 7
 start = min(firesting$datetime_est)
 end = max(firesting$datetime_est)
 
-make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, fill_lab, fill_direction){
+make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, 
+                              fill_lab, fill_direction, startpoint){
   
   viridis_endpoint = 0.8
   
@@ -61,6 +64,7 @@ make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, fill_lab, fill
     scale_y_reverse(expand = c(0,0)) + 
     scale_fill_viridis_d(option = "mako", 
                          direction = fill_direction, 
+                         begin = startpoint,
                          end = viridis_endpoint) + 
     labs(x = x_lab, y = y_lab, fill = fill_lab) + 
     theme(strip.background = element_rect(fill = "gray90"), 
@@ -76,6 +80,7 @@ make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, fill_lab, fill
     facet_wrap(~plot, ncol = 1) +
     scale_fill_viridis_c(option = "mako",
                          direction = fill_direction,
+                         begin = startpoint,
                          end = viridis_endpoint) +
     labs(fill = fill_lab) +
     theme(legend.background = element_blank(),
@@ -90,16 +95,16 @@ make_contour_plot <- function(data, var, max_depth, x_lab, y_lab, fill_lab, fill
 # 3. Create plots --------------------------------------------------------------
 
 vwc_plot <- make_contour_plot(teros, vwc, 30, "", "Soil depth (cm)", 
-                              bquote("VWC (m"^{3}/m^{3}*")"), -1)
+                              bquote("VWC (m"^{3}/m^{3}*")"), -1, 0)
 
-ec_plot <- make_contour_plot(teros, ec, 30, "Datetime", "", 
-                              bquote("Cond. (µS/cm)"), -1)
+ec_plot <- make_contour_plot(teros, ec, 30, "", "", 
+                              bquote("EC (µS/cm)"), -1, 0)
 
-do_plot <- make_contour_plot(firesting, do_percent_sat, 30, "Datetime", "Soil depth (cm)", 
-                             "DO (% Sat)", 1)
+do_plot <- make_contour_plot(firesting, do_percent_sat, 30, "", "Soil depth (cm)", 
+                             "DO (% Sat)", 1, 0)
 
-redox_plot <- make_contour_plot(swap, eh_mv, 50,  "Datetime", "", 
-                                "Eh (mV)", 1)
+redox_plot <- make_contour_plot(swap, eh_mv, 50,  "", "", 
+                                "Eh (mV)", 1, 0)
 
 
 # 4. Save plots ----------------------------------------------------------------
@@ -108,7 +113,7 @@ save_plot <- function(plot_to_save, name_string){
   
   ## Set dimensions for plot
   plot_width = 12
-  plot_height = 7
+  plot_height = 6.5
   
   plot_to_save
   
@@ -118,14 +123,13 @@ save_plot <- function(plot_to_save, name_string){
          width = plot_width, height = plot_height)
 }
 
-
-
+## Make Current Figure 1
 save_plot(plot_grid(vwc_plot, ec_plot, 
                     nrow = 1, 
                     labels = c("A", "B")), 
           "1_vwc_ec")
 
-
+## Make Current Figure 2
 save_plot(plot_grid(do_plot, redox_plot, 
                     nrow = 1, 
                     labels = c("A", "B")), 

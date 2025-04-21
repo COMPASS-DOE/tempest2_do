@@ -42,8 +42,6 @@ plot_grid(ggplot(ymd_ypd, aes(plot, Ypd)) +
             stat_compare_means(), 
           nrow = 1)
 
-
-  
 ## Only Beech trees were included
 spp <- read_csv("data/from_kendal/sapflow_inventory.csv") %>% 
   clean_names() %>% 
@@ -66,5 +64,10 @@ df %>%
   mutate(hour = hour(time_hms)) %>% 
   ggplot(aes(as.factor(hour), water_potential, fill = plot)) + 
   geom_boxplot() 
+
+df %>% 
+  mutate(hour = hour(time_hms)) %>% 
+  mutate(period = ifelse(hour < 6, "0_predawn", "1_midday"))
+
 
 

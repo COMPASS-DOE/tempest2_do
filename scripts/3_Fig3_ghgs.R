@@ -85,31 +85,29 @@ ghgs <- bind_rows(soil_ghg_flux %>%
   dplyr::select(plot, condition, co2) %>% 
   mutate(type = "tree", 
          measurement = "conc", 
-         unit = "ppm"))
+         unit = "ppm")) %>% 
+  mutate(plot = ifelse(plot == "Estuarine", "Saltwater", plot))
 
 
+# ggplot(ghgs, aes(plot, co2, fill = condition, color = condition)) + 
+#   #geom_boxplot(alpha = 0.5) + 
+#   geom_violin(alpha = 0.4) +
+#   # geom_jitter(alpha = 0.5, 
+#   #            position = position_dodge(width = 1)) + 
+#   #facet_grid(type~measurement, scales = "free")
+#   facet_wrap(type~measurement, scales = "free") + 
+#   geom_tukey(where = "whisker")
 
 
-
-ggplot(ghgs, aes(plot, co2, fill = condition, color = condition)) + 
-  #geom_boxplot(alpha = 0.5) + 
-  geom_violin(alpha = 0.4) +
-  # geom_jitter(alpha = 0.5, 
-  #            position = position_dodge(width = 1)) + 
-  #facet_grid(type~measurement, scales = "free")
-  facet_wrap(type~measurement, scales = "free") + 
-  geom_tukey(where = "whisker")
-
-
-ghgs %>% 
-  filter(measurement == "flux" & type == "soil") %>% 
-  ggplot(aes(condition, co2)) + 
-  geom_boxplot(aes(fill = condition), show.legend = F, outlier.alpha = 0, alpha = 0.5) + 
-  geom_jitter(alpha = 0.5, width = 0.1) + 
-  facet_wrap(~plot, nrow = 1) +
-  geom_tukey(where = "whisker") + 
-  labs(x = "", y = "Soil CO2 flux (umol/m2/min)") + 
-  scale_fill_viridis_d() 
+# ghgs %>% 
+#   filter(measurement == "flux" & type == "soil") %>% 
+#   ggplot(aes(condition, co2)) + 
+#   geom_boxplot(aes(fill = condition), show.legend = F, outlier.alpha = 0, alpha = 0.5) + 
+#   geom_jitter(alpha = 0.5, width = 0.1) + 
+#   facet_wrap(~plot, nrow = 1) +
+#   geom_tukey(where = "whisker") + 
+#   labs(x = "", y = "Soil CO2 flux (umol/m2/min)") + 
+#   scale_fill_viridis_d() 
 
 
 make_boxplot <- function(selected_measurement, selected_type, plot_title, y_lab, vert_just){
@@ -138,15 +136,14 @@ make_boxplot <- function(selected_measurement, selected_type, plot_title, y_lab,
       strip.background = element_rect(fill = "lightgrey"),
       strip.text = element_text(face = "bold", color = "black"),
       plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-      plot.subtitle = element_text(face = "italic", size = 12, hjust = 0.5)
-    ) + 
+      plot.subtitle = element_text(face = "italic", size = 12, hjust = 0.5)) + 
     scale_fill_viridis_d(option = "mako") + 
     scale_color_viridis_d(option = "mako", end = 0.8)
 }
 
 
 soil_plots = plot_grid(make_boxplot("flux", "soil", 
-                                    "Soils", expression(paste("C", O[2], " Flux (", mu, "mol ", m^2, "/min)")), -5) + 
+                                    "Soils", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5) + 
                          theme(axis.text.x=element_blank()), 
                        make_boxplot("conc", "soil", "", expression(paste("C", O[2], " Concentration (ppm)")), -1), 
                        ncol = 1, labels = c("A", "C"), 
@@ -163,3 +160,16 @@ plot_grid(soil_plots, tree_plots, nrow = 1)
 ggsave("figures/3_ghgs.png", width = 12, height = 10)
 ggsave("figures/3_ghgs.pdf", width = 12, height = 10)
 
+plot_grid(make_boxplot("flux", "soil", "", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5), 
+          make_boxplot("conc", "soil", "", expression(paste("C", O[2], " Concentration (ppm)")), -1), 
+          nrow = 1, labels = c("A", "B"), 
+          align = "hv")
+ggsave("figures/x_soil_ghgs.pdf", width = 12, height = 6)
+
+
+plot_grid(make_boxplot("flux", "soil", "", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5), 
+          make_boxplot("flux", "tree", "", "", -1), 
+          nrow = 1, labels = c("A", "B"), 
+          align = "hv")
+ggsave("figures/x_ghg_fluxes.pdf", width = 12, height = 6)
+ggsave("figures/x_ghg_fluxes.png", width = 12, height = 6)
