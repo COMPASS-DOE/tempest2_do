@@ -51,7 +51,7 @@ tree_ghg_conc <- read_csv("data/raw_data/swilson_ghg_concentrations/TEMPEST_TGW_
   mutate(hours = sample_time %/% 100,
          minutes = sample_time %% 100,
          time_hms = sprintf("%02d:%02d:00", hours, minutes)) %>%
-  select(-hours, -minutes) %>% 
+  dplyr::select(-c(hours, minutes)) %>% 
   mutate(datetime_est = parsedate::parse_date(paste(date, time_hms)) - hours(1)) %>% 
   dplyr::select(datetime_est, date, time_hms, sample_plot, tree_id, 
                 co2_conc_ppm_dilcorr, ch4_conc_ppm_dilcorr) %>% 

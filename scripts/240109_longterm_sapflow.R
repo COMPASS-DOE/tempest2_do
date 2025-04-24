@@ -26,7 +26,8 @@ list_tmp_files <- function(folder){
              full.names = TRUE)
 }
 
-folders <- c("TMP_2021", "TMP_2022", "TMP_2023")
+#folders <- c("TMP_2021", "TMP_2022", "TMP_2023")
+folders <- c("TMP_2023")
 
 all_files <- unlist(lapply(folders, list_tmp_files))
 
@@ -59,7 +60,8 @@ list_gcw_files <- function(folder){
              full.names = TRUE)
 }
 
-folders <- c("GCW_2021", "GCW_2022", "GCW_2023")
+#folders <- c("GCW_2021", "GCW_2022", "GCW_2023")
+folders <- c("GCW_2023")
 
 gcw_files <- unlist(lapply(folders, list_gcw_files))
 
@@ -214,6 +216,17 @@ scaled <- merge(sfd_data %>% mutate(year = year(timestamp)),
 sf_scaled <- scaled %>%
   dplyr::select(sensor_id, year, species, plot, timestamp, Fd, SA) %>%
   mutate(F = SA * Fd)
+
+sf_plot_by_tree <- sf_scaled %>% 
+  mutate(Hour = hour(timestamp)) %>%
+  mutate(Date = date(timestamp)) %>%
+  mutate(monthyr = floor_date(timestamp, unit = "week")) %>%
+  filter(Hour >= 11, Hour <= 12) %>% 
+  filter(F <= 2, F >= 0) %>%
+  group_by(plot, species, sensor_id, Date) %>% 
+  summarise(F_avg = mean(F, na.rm = TRUE))
+write_csv(sf_plot_by_tree, "data/250421_sapflow_by_tree.csv")
+
 
 sf_plot_avg <- sf_scaled %>% 
   mutate(Hour = hour(timestamp)) %>%

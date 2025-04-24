@@ -1,7 +1,9 @@
 
 source("scripts/0_0_setup.R")
+p_load(trend)
 
 df_raw <- read_csv("data/250310_2023_sapflow.csv")
+#df_raw <- read_csv("data/250310_2023_sapflow.csv")
 
 df_raw %>% 
   filter(species == "Tulip Poplar", plot == "Saltwater") %>% 
@@ -10,7 +12,7 @@ df_raw %>%
   geom_smooth()
 
 df <- df_raw %>% 
-  mutate(pre = ifelse(doy < ))
+  filter(doy > 100 & doy < 300)
 
 
 flood_doy <- lubridate::yday(dump_start1)
@@ -30,29 +32,6 @@ calculate_deltas <- function(selected_spp){
     mutate(species = selected_spp)
 }
 
-x <- df %>% 
-  filter(species == "Tulip Poplar") %>% 
-  dplyr::select(plot, doy, f_avg) %>% 
-  pivot_wider(names_from = "plot", values_from = "f_avg") %>% 
-  mutate(period = ifelse(doy < flood_doy, "1_preflood", "post-flood"), 
-         days_since_flood = doy - flood_doy) %>% 
-  mutate(delta_sw = (Saltwater - Control) / Control, 
-         delta_fw = (Freshwater - Control) / Control) %>% 
-  mutate(delta_sw_roll = zoo::rollmean(delta_sw, roll_length, fill = NA), 
-         delta_fw_roll = zoo::rollmean(delta_fw, roll_length, fill = NA))
-
-
-plot_grid(ggplot(x, aes(doy)) + 
-            geom_point(aes(y = delta_sw), alpha = 0.5) + 
-            geom_line(aes(y = delta_sw_roll)) + 
-            geom_vline(xintercept = flood_doy, linetype = "dashed"), 
-          ggplot(x, aes(doy)) + 
-            geom_point(aes(y = delta_fw), alpha = 0.5) + 
-            geom_line(aes(y = delta_fw_roll)) + 
-            geom_vline(xintercept = flood_doy, linetype = "dashed"), 
-          ncol = 1)
-
-
 ## Do for all species
 
 
@@ -67,8 +46,6 @@ anyas_colors = c("springgreen2", "cyan2", "violetred2")
 p1 <- ggplot(df, aes(x = doy, color = plot)) + 
   geom_point(aes(y = f_avg), alpha = 0.4) + 
   geom_line(aes(y = f_roll)) + 
-  annotate(geom = "rect", xmin = 100, xmax = 300, ymin = 0, ymax = 1.6, 
-           color = NA, fill = "gray", alpha = 0.2) + 
   geom_vline(xintercept = flood_doy, linetype = "dashed") + 
   facet_wrap(~species, ncol = 1) + 
   scale_color_manual(values = anyas_colors) + 
@@ -78,12 +55,8 @@ p1 <- ggplot(df, aes(x = doy, color = plot)) +
         legend.key = element_rect(fill = NA, color = NA)) 
 
 p2 <- deltas %>% 
-  select(species, doy, contains("delta")) %>% 
+  dplyr::select(species, doy, contains("delta")) %>% 
   ggplot(aes(x = doy)) + 
-  annotate(geom = "rect", xmin = 100, xmax = 300, 
-           ymin = min(deltas$delta_sw), 
-           ymax = max(deltas$delta_fw), 
-           color = NA, fill = "gray", alpha = 0.2) + 
   geom_hline(yintercept = 0) + 
   geom_point(aes(y = delta_sw), color = anyas_colors[3], alpha = 0.2) + 
   geom_line(aes(y = delta_sw_roll), color = anyas_colors[3]) + 
