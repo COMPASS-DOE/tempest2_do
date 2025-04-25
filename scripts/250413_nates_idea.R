@@ -12,8 +12,12 @@ df_raw %>%
   geom_smooth()
 
 df <- df_raw %>% 
-  filter(doy > 100 & doy < 300)
-
+  filter(doy > 100 & doy < 300) %>% 
+  mutate(period = ifelse(doy < flood_doy, "1_preflood", "post-flood"), 
+         days_since_flood = doy - flood_doy) %>% 
+  group_by(species, plot) %>% 
+  mutate(pre_mean = mean(f_avg[period == "1_preflood"])) %>% 
+  mutate(f_avg_n = f_avg - pre_mean)
 
 flood_doy <- lubridate::yday(dump_start1)
 roll_length = 10
@@ -21,10 +25,8 @@ roll_length = 10
 calculate_deltas <- function(selected_spp){
   df %>% 
     filter(species == selected_spp) %>% 
-    dplyr::select(plot, doy, f_avg) %>% 
-    pivot_wider(names_from = "plot", values_from = "f_avg") %>% 
-    mutate(period = ifelse(doy < flood_doy, "1_preflood", "post-flood"), 
-           days_since_flood = doy - flood_doy) %>% 
+    dplyr::select(plot, doy, f_avg_n) %>% 
+    pivot_wider(names_from = "plot", values_from = "f_avg_n") %>% 
     mutate(delta_sw = Saltwater - Control, 
            delta_fw = Freshwater - Control) %>% 
     mutate(delta_sw_roll = zoo::rollmean(delta_sw, roll_length, fill = NA), 
@@ -71,6 +73,11 @@ p2 <- deltas %>%
 
 plot_grid(p1, p2, nrow = 1)
 ggsave("figures/250413_delta_sapflux.png", width = 9, height = 6)
+
+
+
+
+
 
 ## And now for something totally different
 

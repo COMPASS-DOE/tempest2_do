@@ -20,7 +20,7 @@ p_load(gt,
 
 # 2. Read in data --------------------------------------------------------------
 
-means_and_ranges <- read_csv("data/stats_by_depth_and_period.csv")
+medians_and_ranges <- read_csv("data/stats_by_depth_and_period.csv")
 friedman <- read_csv("data/250410_sensor_friedman_results.csv")
 wilcoxon <- read_csv("data/250410_sensor_wilcoxon_results.csv")
 
@@ -38,16 +38,16 @@ filtered_wilcoxon <- wilcoxon %>%
 
 # 4. Table S2: Means and ranges by period --------------------------------------
 
-table_s2_data <- means_and_ranges %>% 
+table_s2_data <- medians_and_ranges %>% 
   dplyr::select(-depth) %>% 
   group_by(plot, period2, variable) %>% 
   summarize(min = min(min, na.rm = T), 
-            mean = mean(mean, na.rm = T), 
+            median = median(median, na.rm = T), 
             max = max(max, na.rm = T)) %>% 
   mutate(min = sprintf('%.2f',min), 
-         mean = sprintf('%.2f',mean), 
+         median = sprintf('%.2f',median), 
          max = sprintf('%.2f',max)) %>% 
-  mutate(mean_range = paste0(mean, " (", min, "-", max, ")")) %>% 
+  mutate(median_range = paste0(median, " (", min, "-", max, ")")) %>% 
   mutate(period = factor(case_when(period2 == "1_preflood" ~ "Pre-flood", 
                                    period2 == "2_flood" ~ "Flood", 
                                    period2 == "3_postflood" ~ "Post-flood"))) %>% 
@@ -60,7 +60,7 @@ table_s2_data <- means_and_ranges %>%
 
 
 pivot_data <- table_s2_data %>%
-  pivot_wider(id_cols = c(variable), names_from = c(period, plot), values_from = mean_range) %>%
+  pivot_wider(id_cols = c(variable), names_from = c(period, plot), values_from = median_range) %>%
   arrange(variable)
 
 # Extract unique period and plot combinations
@@ -84,7 +84,7 @@ table_s2 <- kable(formatted_data, format = "html", escape = FALSE, col.names = d
   column_spec(1, width = "10em", extra_css = "text-align: center;") %>%
   column_spec(2:ncol(pivot_data), width = "15em", extra_css = "text-align: center;") %>%
   add_header_above(c(" " = 1, setNames(period_and_counts, periods))) %>% 
-  add_header_above(c("Table S2 - means and ranges of sensor measurements" = length(display_col_names)), bold = TRUE, align = "c")
+  add_header_above(c("Table S2 - medians and ranges of sensor measurements" = length(display_col_names)), bold = TRUE, align = "c")
 
 # Save the table as an HTML file
 save_kable(table_s2, "table_s2.html")

@@ -75,7 +75,7 @@ summarize_by_depth <- function(data, var){
   dplyr::select(plot, depth, period2, {{var}}) %>% 
   group_by(plot, period2, depth) %>% 
   summarize(min = min(!!var_sym, na.rm = T), 
-            mean = mean(!!var_sym, na.rm = T), 
+            median = median(!!var_sym, na.rm = T), 
             max = max(!!var_sym, na.rm = T)) %>% 
   mutate(variable = rlang::as_string(var_sym))
 }

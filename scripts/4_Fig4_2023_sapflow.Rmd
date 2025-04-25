@@ -41,7 +41,7 @@ We are only interested in the growing season, since the non-growing season is ba
 flood_doy <- lubridate::yday(dump_start1)
 
 df_trim <- df_raw %>% 
-  filter(doy > 80 & doy < 320)
+  filter(doy > 100 & doy < 300)
 
 p1 <- ggplot(df_trim, aes(x = doy, color = plot)) + 
   geom_point(aes(y = f_avg), alpha = 0.4) + 
@@ -73,7 +73,6 @@ We are going to use the 30 days prior to the first day of flooding to calculate 
 ## Things are a little funky here. It seemed like I could do this really tidily but then things kept looking weird so I'm opting for the aggressively transparent, ugly version of the code.
 
 df_trim2 <- df_trim %>% 
-  filter(doy >= 127 & doy <= 275) %>%  #127 is 30 days prior to flooding, 275 is a visual cutoff for end of the growing season
   group_by(plot, species) %>% 
   mutate(pre_mean = mean(f_avg[doy < flood_doy])) %>% 
   mutate(f_avg_n = f_avg - pre_mean)
@@ -125,6 +124,7 @@ p2
 
 Let's use Sen-Thiel slopes to understand if slopes are different from each other, and different from zero: 
 
+#### Stats for raw values
 ```{r}
 bind_rows(deltas %>% 
             ungroup() %>% 
@@ -140,7 +140,25 @@ bind_rows(deltas %>%
             mutate(plot = "Saltwater"))
 ```
 
+#### The same stats but for rolling means
+```{r}
 
+deltas_no_na <- deltas %>% 
+  drop_na() 
+
+bind_rows(deltas_no_na %>% 
+            ungroup() %>% 
+            group_by(species) %>% 
+            summarize(slope = sens.slope(delta_fw_roll)$estimates[1], 
+                      p = sens.slope(delta_fw_roll)$p.value) %>% 
+            mutate(plot = "Freshwater"), 
+          deltas_no_na %>% 
+            ungroup() %>% 
+            group_by(species) %>% 
+            summarize(slope = sens.slope(delta_sw_roll)$estimates[1], 
+                      p = sens.slope(delta_sw_roll)$p.value) %>% 
+            mutate(plot = "Saltwater"))
+```
 
 
 ### Put them together
@@ -148,7 +166,8 @@ bind_rows(deltas %>%
 ```{r}
 plot_grid(p1, p2, nrow = 1, 
           rel_widths = c(1, 0.7))
-ggsave("../figures/250422_Figure4.png", width = 10, height = 7)
+ggsave("../figures/4_sapflow.png", width = 10, height = 7)
+ggsave("../figures/4_sapflow.pdf", width = 10, height = 7)
 
 ```
 
