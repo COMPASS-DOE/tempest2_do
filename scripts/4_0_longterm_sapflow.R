@@ -23,8 +23,7 @@ list_tmp_files <- function(folder){
   list.files(paste0("data/l1_raw_files/TMP/", folder), 
              pattern = ".csv", 
              recursive = TRUE, 
-             full.names = TRUE)
-}
+             full.names = TRUE)}
 
 #folders <- c("TMP_2021", "TMP_2022", "TMP_2023")
 folders <- c("TMP_2023")
@@ -35,12 +34,9 @@ read_in_sapflow <- function(f) {
   
   message("Reading ", basename(f))
   
-  variables <- "sapflow_2.5cm"
-  
   read_csv(f, col_types = "ccTccccdccii") %>% 
     clean_names() %>% 
-    filter(research_name == "sapflow_2.5cm")
-}
+    filter(research_name == "sapflow_2.5cm")}
 
 #Correction for F19 being mislabeled as F19D in L1 data
 sapflow_raw <- all_files %>% 

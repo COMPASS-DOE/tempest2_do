@@ -21,7 +21,7 @@ Y_raw <- read_xlsx("data/raw_data/vegetation/241111_TEMPEST2_water_potentials.xl
                                         as.integer(substr(time_str, nchar(time_str)-1, nchar(time_str)))))) %>% 
   mutate(datetime = update(date, hours = hour(time_hms), minutes = minute(time_hms))) %>% 
   mutate(type = case_when(time < 600 ~ "Ypd", 
-                          time >= 1100 & time <= 1200 ~ "Ymd", 
+                          time >= 1100 & time <= 1215 ~ "Ymd", 
                           TRUE ~ "other")) %>% 
   mutate(hour = hour(time_hms))
 
@@ -37,12 +37,15 @@ Y_raw %>%
 Ypd_Ymd <- Y_raw %>% 
   filter(type != "other") %>% 
   group_by(plot, stem_id, type) %>% 
+  mutate(water_potential = water_potential * -1) %>% 
   summarize(water_potential = mean(water_potential, na.rm = T)) %>% 
   pivot_wider(names_from = "type", values_from = "water_potential") %>% 
-  mutate(Ypd_Ymd = Ypd - Ymd)
+  mutate(Ypd_Ymd = Ypd - Ymd) %>% 
+  ungroup()
 
 ggplot(Ypd_Ymd, aes(plot, Ypd_Ymd)) + 
-  geom_boxplot()
+  geom_boxplot() + 
+  geom_jitter(width = 0.2)
 
 
 # 4. Read in sapflow -----------------------------------------------------------
@@ -50,17 +53,20 @@ ggplot(Ypd_Ymd, aes(plot, Ypd_Ymd)) +
 sapflow_raw <- read_csv("data/250421_sapflow_by_tree.csv")
 
 sapflow_trim <- sapflow_raw %>% 
-  filter(Date == "2023-06-13")
+  filter(Date > "2023-06-08" & 
+           Date < "2023-06-14") %>% 
+  group_by(plot, species, sensor_id) %>% 
+  summarize(F_avg = mean(F_avg, na.rm = T))
 
 
 # 5. Calculate k! --------------------------------------------------------------
 
 ## Join datasets and calculate k
-df <- inner_join(sapflow_trim %>% dplyr::select(-plot), 
-                 Ypd_Ymd, 
+df <- inner_join(sapflow_trim, 
+                 Ypd_Ymd  %>% dplyr::select(-plot), 
                  by = c("sensor_id" = "stem_id")) %>% 
-  mutate(k = F_avg / Ypd_Ymd) %>% 
-  filter(k > -4)
+  mutate(k = F_avg / Ypd_Ymd) #%>% 
+ # filter(k > -4)
   
 ggplot(df, aes(plot, k)) + 
   geom_boxplot() + 

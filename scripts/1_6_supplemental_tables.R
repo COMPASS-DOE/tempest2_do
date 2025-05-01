@@ -39,6 +39,7 @@ filtered_wilcoxon <- wilcoxon %>%
 # 4. Table S2: Means and ranges by period --------------------------------------
 
 table_s2_data <- medians_and_ranges %>% 
+  mutate(plot = ifelse(plot == "Estuarine", "Saltwater", plot)) %>% 
   dplyr::select(-depth) %>% 
   group_by(plot, period2, variable) %>% 
   summarize(min = min(min, na.rm = T), 
@@ -145,13 +146,13 @@ table_s1_by_depth <- kable(pivot_data_by_depth, format = "html", escape = FALSE,
   column_spec(2, width = "5em") %>%
   column_spec(3:ncol(pivot_data), width = "15em") %>%
   add_header_above(c(" " = 2, setNames(period_and_counts_by_depth, periods_by_depth))) %>% 
-  add_header_above(c("Table S1 - means and ranges of sensor measurements" = length(display_col_names_by_depth)), bold = TRUE, align = "c")
+  add_header_above(c("Table S2 - means and ranges of sensor measurements" = length(display_col_names_by_depth)), bold = TRUE, align = "c")
 
 # Save the table as an HTML file
-save_kable(table_s1_by_depth, "table_s1_by_depth.html")
+save_kable(table_s1_by_depth, "table_s2_by_depth.html")
 
 # Convert the HTML table to an image
-webshot("table_s1_by_depth.html", "figures/supplemental/table_s1_by_depth.png", selector = "table", 
+webshot("table_s1_by_depth.html", "figures/supplemental/table_s2_by_depth.png", selector = "table", 
         vwidth = 2100, vheight = 900)
 
 

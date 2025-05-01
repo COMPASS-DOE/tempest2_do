@@ -220,3 +220,28 @@ firesting_anoxia %>%
 240300 / (3600 * 24)
 
 
+## Calculate rates of VWC increase during first flood by plot/depth
+
+teros_flood1 <- teros %>% filter(datetime >= flood1[1] & 
+                                  datetime <= flood1[1] + hours(1)) %>% 
+  mutate(flood = 1)
+
+teros_flood2 <- teros %>% filter(datetime >= flood2[1] & 
+                                   datetime <= flood2[1] + hours(1)) %>% 
+  mutate(flood = 2)
+
+teros_rates = bind_rows(teros_flood1, teros_flood2)
+
+ggplot(teros_flood2, aes(datetime_est, vwc, color = as.factor(depth))) + 
+  geom_line() + 
+  facet_wrap(~plot, ncol = 1)
+
+teros_flood1 %>% 
+  group_by(plot, depth) %>% 
+  summarize(start = min(vwc, na.rm = T), 
+            end = max(vwc, na.rm = T)) %>% 
+  mutate(delta = ((end - start)/start)*100) %>% 
+  ungroup() %>% 
+  group_by(plot) %>% 
+  summarize(mean(delta))
+

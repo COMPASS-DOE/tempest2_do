@@ -14,7 +14,10 @@
 ## Load setup script
 source("scripts/0_0_setup.R")
 
-require(ggtukey)
+require(ggtukey, 
+        rstatix)
+
+anyas_colors = c("springgreen2", "cyan2", "violetred2")
 
 ## Make a small helper script to format each dataset when reading in
 
@@ -31,65 +34,43 @@ prep_csvs <- function(path){
 teros <- prep_csvs("data/240326_teros_final.csv")
 firesting <- prep_csvs("data/240318_firesting_final.csv")
 swap <- prep_csvs("data/240404_swap_final.csv") %>% 
-  rename("depth" = depth_cm)
+  rename("depth" = depth_cm) %>% 
+  mutate(eh_cat = case_when(eh_mv >= 400 ~ "1. oxidizing", 
+                            eh_mv < 400 & eh_mv >= 200 ~ "2. weakly reducing", 
+                            eh_mv < 200 & eh_mv >= -100 ~ "3. moderately reducing", 
+                            eh_mv < -100 ~ "4. strongly reducing"))
 
 
-# 2. Make boxplots (Figure SA) -------------------------------------------------
 
-## Create a function, which relies heavily on ggtukey::geom_tukey() to do the heavy
-## lifting described in https://www.mathiasecology.com/code/add-tukeys-significant-letters-to-ggplots
-make_tukey_boxplots <- function(data, var, y_label){
-  ggplot(data, aes(x = period, y = {{var}}, fill = period)) + 
-    geom_boxplot(width = 0.8, show.legend = F) + 
-    facet_wrap(~plot) + 
-    geom_tukey(where = "whisker") + 
-    scale_x_discrete(labels = unique(data$period_relabel)) + 
-    scale_fill_viridis_d() + 
-    labs(x = "", y = y_label)
-}
-
-plot_grid(make_tukey_boxplots(teros, vwc, bquote("VWC (m"^{3}/m^{3}*")")), 
-          make_tukey_boxplots(teros, ec, "EC (uS/cm)"), 
-          make_tukey_boxplots(firesting, do_percent_sat, "DO (mg/L)"), 
-          make_tukey_boxplots(swap, eh_mv, "Eh (mV)"), 
-          ncol = 1)
-ggsave("figures/supplemental/sa_boxplots.png", width = 12, height = 13)
-ggsave("figures/supplemental/sa_boxplots.pdf", width = 12, height = 13)
-
-## Stats accompanying Figure SA
-teros %>% 
-  group_by(plot, depth) %>% 
-  summarize(vpre = mean(vwc[period_relabel == "Pre-Flood"], na.rm = T), 
-            vdist = max(vwc[grepl("Flood #", period_relabel)], na.rm = T)) %>% 
-  mutate(diff = vdist - vpre) %>% 
-  mutate(per_diff = (diff/vpre) * 100)
-
-teros %>% 
-  group_by(plot, depth) %>% 
-  summarize(vpre = mean(ec[period_relabel == "Pre-Flood"], na.rm = T), 
-            vdist = max(ec[grepl("Flood #", period_relabel)], na.rm = T)) %>% 
-  mutate(diff = vdist - vpre) %>% 
-  mutate(per_diff = (diff/vpre) * 100)
-  
-firesting %>% 
-  group_by(plot, depth) %>% 
-  summarize(vpre = mean(do_percent_sat[period_relabel == "Pre-Flood"], na.rm = T), 
-            vdist = min(do_percent_sat[grepl("Flood #|Inter", period_relabel)], na.rm = T), 
-            vpost = min(do_percent_sat[grepl("Post", period_relabel)], na.rm = T)) %>% 
-  mutate(diff = vdist - vpre) %>% 
-  mutate(per_diff = (diff/vpre) * 100)
 
 ################################################################################
 
-# DO consumption rates (Figure SB) ---------------------------------------------
+# DO consumption rates (Figure S2) ---------------------------------------------
 
 ## Code taken from 231019_Figure4_anoxia_hypoxia_rates.R then modified
-anoxia_by_plot_and_depth <- firesting %>% 
+anoxia_by_depth <- firesting %>% 
   filter(grepl("Flood #", period_relabel)) %>% 
-  group_by(period_relabel, plot, depth) %>% 
+  group_by(plot, depth) %>% 
   summarize(period = first(period), 
             perc_anoxic = length(do_percent_sat[do_percent_sat < 1]) / length(do_percent_sat) * 100,
             perc_hypoxic = length(do_percent_sat[do_percent_sat < 20]) / length(do_percent_sat) * 100)
+
+sb_p2 <- ggplot(anoxia_by_depth %>% 
+         filter(plot != "Control"), 
+       aes(perc_hypoxic, as.factor(depth), fill = plot)) + 
+  geom_col(position = "dodge", alpha = 0.7) + 
+  scale_y_discrete(limits=rev) + 
+  scale_fill_manual(values = anyas_colors[2:3]) + 
+  labs(x = "% Hypoxic", y = "Depth (cm)", fill = "")
+
+sb_p3 <- ggplot(anoxia_by_depth %>% 
+                  filter(plot != "Control"), 
+                aes(perc_anoxic, as.factor(depth), fill = plot)) + 
+  geom_col(position = "dodge", alpha = 0.7) + 
+  scale_y_discrete(limits=rev) + 
+  scale_fill_manual(values = anyas_colors[2:3]) + 
+  labs(x = "% Anoxic", y = "Depth (cm)", fill = "")
+
 
 ## Calculating consumption rates is a manual process and a little painful
 
@@ -111,110 +92,201 @@ firesting_rates_raw <- firesting %>%
   filter(datetime_est > as.POSIXct("2023-06-06 04:00", tz = common_tz)) %>% 
   group_by(plot, depth) %>% 
   mutate(index = 1:n()) %>% 
-  ungroup()
+  ungroup() %>% 
+  filter(do_percent_sat > 0.1)
 
 ## Set up a matrix with all the plots we'll need indices for
-trim_start_raw <- expand_grid(plot = unique(firesting_rates_raw$plot), 
-                              depth = unique(firesting_rates_raw$depth), 
-                              period_relabel = c("Flood #1", 
+consumption_event <- expand_grid(selected_plot = unique(firesting_rates_raw$plot), 
+                              selected_depth = unique(firesting_rates_raw$depth), 
+                              selected_period = c("Flood #1", 
                                                  "Flood #2")) 
 
 i = 16
 ## Plotly plot to examine and ID points where we want to trim each value
 p <- firesting_rates_raw %>% 
-  filter(plot == trim_start_raw$plot[[i]] & 
-           depth == trim_start_raw$depth[[i]] & 
-           grepl(trim_start_raw$period_relabel[[i]], period_relabel)) %>% 
+  filter(plot == consumption_event$selected_plot[[i]] & 
+           depth == consumption_event$selected_depth[[i]] & 
+           grepl(consumption_event$selected_period[[i]], period_relabel)) %>% 
   ggplot(aes(index, do_percent_sat, label = datetime_est)) + 
   geom_line() + 
   geom_point(alpha = 0.5)
 
 ggplotly(p)
 
-## really good news here is that all Flood #1 events are somewhat linear
-## decreasing patterns that don't need to be trimmed, so let's just take the
-## Flood #1 time-period and calculate rates! No guessing, no manual anything, 
-## just taking the data, finding DOstart and DOend then rates based on the 10
-## hours of the events
+## FW 30cm Flood #2 (i = 8) is a problem, scrub. same for i=16
 
-pull_data <- function(plot, 
-                      depth = depth, 
-                      period_relabel = period_relabel){ 
+calculate_rate <- function(selected_plot, 
+                           selected_depth, 
+                           selected_period){
   
   x <- firesting_rates_raw %>% 
-    filter(plot == plot, 
-           depth == depth, 
-           period_relabel = period_relabel)
-  
-  do_max = max(x$do_percent_sat, na.rm = T)
-  do_min = max(x$do_percent_sat, na.rm = T)
-  
-  rate = (do_max - do_min) / 10
-  
-  return(rate)
+    filter(plot == selected_plot, 
+           depth == selected_depth, 
+           period_relabel == selected_period)
+
+  x %>% 
+    summarize(start_do = first(do_percent_sat), 
+              min_do = min(do_percent_sat), 
+              time = as.numeric(max(datetime_est) - min(datetime_est))) %>%
+    mutate(plot = selected_plot, 
+           depth = selected_depth, 
+           period_relabel = selected_period) %>% 
+    mutate(do_perc_per_hour = (start_do - min_do) / time)
 }
 
-# trim_start_raw %>% 
-#   filter(period_relabel == "Flood #1") %>% 
-#   #dplyr::slice(1) %>% 
-#   pmap(pull_data)
+calculate_rate("Freshwater", 5, "Flood #1")
 
+do_rates <- consumption_event %>%
+  pmap_dfr(function(selected_plot, selected_depth, selected_period) {
+    calculate_rate(selected_plot, selected_depth, selected_period)
+  }) 
 
-# ## What does the relationship between soil CO2 concentration and flux look like?
-ghg_path = "data/raw_data/ghgs/"
+sb_p1 <- ggplot(do_rates, aes(do_perc_per_hour, as.factor(depth), fill = period_relabel)) + 
+  geom_col(position = "dodge", alpha = 0.7) + 
+  facet_wrap(~plot, ncol = 1) + 
+  scale_y_discrete(limits=rev) +
+  labs(x = "DO consumption (%/hour)", y = "Depth (cm)", fill = "") 
 
-soil_ghg <- read_csv(paste0(ghg_path, "ghg_fluxes_soil_nickworking.csv")) %>%
-  clean_names() %>%
-  filter(!is.na(timepoint)) %>%
-  mutate(timepoint_dbl = str_sub(timepoint, 2)) %>%
-  mutate(condition = str_to_sentence(str_replace_all(condition, "-", ""))) %>%
-  mutate(condition = fct_relevel(condition, "Preflood"))
-
-ggplot(soil_ghg, aes(condition, co2_umol_m2_s, fill = condition)) +
-  geom_boxplot() +
-  facet_wrap(~plot, nrow = 1)
-
-baseline <- soil_ghg %>% 
-  filter(plot != "Control") %>% 
-  filter(condition == "Preflood") %>% 
-  summarize(umol_m2_s = mean(co2_umol_m2_s, na.rm = T)) %>% 
-  mutate(umol_m2_yr = umol_m2_s * 3600 * 365.25)
-  
-flood_duration <- soil_ghg %>% 
-  filter(condition == "Flooded") %>% 
-  mutate(datetime = as_datetime(paste(parse_date(date), time))) %>% 
-  summarize(duration = as.numeric(max(datetime) - min(datetime))) %>% 
-  pull()
-
-reduction <- soil_ghg %>% 
-  filter(plot != "Control") %>% 
-  filter(condition == "Flooded") %>% 
-  summarize(decline_s = mean(co2_umol_m2_s, na.rm = T)) %>% 
-  mutate(diff = baseline$umol_m2_s - decline_s) %>% 
-  mutate(diff_yr = diff * 3600 * flood_duration)
-
-## So basically, it's really not that important...
-(reduction$diff_yr / baseline$umol_m2_yr) * 100
-
-
-# sgw <- read_csv("data/240909_soil_ghg_concentrations.csv")
-
-
-## Calculate the percent of average daily fluxes associated with the decreased
-## respiration
+plot_grid(sb_p1, plot_grid(sb_p2, sb_p3, ncol = 1, labels = c("B", "C")), 
+          nrow = 1, labels = c("A", ""))
+ggsave("figures/supplemental/S2_DO_stats.png", width = 8, height = 5)
 
 
 
+################################################################################
 
-  
-## For Flood #2, we have a couple patterns: 
-### Normal rate, then plateauing near 0: i = 2, 4/6 (ish), 10, 12, 14 
-### Really low (stays hypoxic/anoxic): i = 8, 16
-## I think the most impartial would be 1) if max < 20, don't calculate a rate, 
-## and if max > 20, remove all values < 1, or else use some sort of breakpoint
-## identifier
 
-  
-  
-  
-  
+# Leaf stress metrics (Figure S3) ----------------------------------------------
+
+## Read in vegetation metrics
+## ci = intercellular CO2 (ppm)
+## gs = stomatal conductance (mol m-2 s-1)
+## A (clean_names = a) = photosynthesis rate (umol m-2 s-1)
+veg <- read_csv("data/raw_data/vegetation/Compiled data_TEMPEST veg 2023.csv") %>% 
+  clean_names() %>% 
+  mutate(date = as_date(parsedate::parse_date(date)))
+
+## All three are different
+veg %>% 
+  rstatix::wilcox_test(a ~ plot)
+
+## both different than Control
+veg %>% 
+  rstatix::wilcox_test(gs ~ plot)
+
+plot_veg <- function(var, y_label){
+  ggplot(veg_raw, aes(plot, {{var}})) + 
+    geom_boxplot(aes(fill = plot), show.legend = F, outlier.alpha = 0, alpha = 0.5) + 
+    geom_jitter(alpha = 0.5, width = 0.1) + 
+    stat_compare_means(comparisons = list(c("Control", "Fresh"), 
+                                          c("Control", "Salt"), 
+                                          c("Fresh", "Salt")), 
+                       label = "p.signif",) + 
+    labs(x = "", y = y_label) + 
+    scale_fill_manual(values = anyas_colors)
+}
+
+plot_grid(plot_veg(a, "Photosynthesis rate (umol/m2/min)"), 
+                        plot_veg(gs, "Stomatal conductance (mol/m2/min)"), 
+                        nrow = 1, labels = c("A", "B"))
+ggsave("figures/supplemental/S3_vegetation_responses.png", width = 7, height = 4)
+
+
+################################################################################
+
+# Belowground conductance (Figure S4) ------------------------------------------
+
+p_load(readxl)
+
+
+# 2. Read water potentials -----------------------------------------------------
+
+Y_raw <- read_xlsx("data/raw_data/vegetation/241111_TEMPEST2_water_potentials.xlsx") %>% 
+  clean_names() %>% 
+  mutate(time_str = sprintf("%04d", time),                      # Ensure time is at least 4 digits
+         time_hms = hms::as_hms(sprintf("%02d:%02d:00",
+                                        as.integer(substr(time_str, 1, nchar(time_str)-2)),
+                                        as.integer(substr(time_str, nchar(time_str)-1, nchar(time_str)))))) %>% 
+  mutate(datetime = update(date, hours = hour(time_hms), minutes = minute(time_hms))) %>% 
+  mutate(type = case_when(time < 600 ~ "Ypd", 
+                          time >= 1100 & time <= 1215 ~ "Ymd", 
+                          TRUE ~ "other")) %>% 
+  mutate(hour = hour(time_hms))
+
+Y_raw %>% 
+  filter(type != "other") %>% 
+  ggplot(aes(as.factor(hour), water_potential, color = plot)) + 
+  geom_point() + 
+  facet_wrap(~stem_id)
+
+
+# 3. Calculate change in water potential (Ypd - Ymd) ---------------------------
+
+Ypd_Ymd <- Y_raw %>% 
+  filter(type != "other") %>% 
+  group_by(plot, stem_id, type) %>% 
+  mutate(water_potential = water_potential * -1) %>% 
+  summarize(water_potential = mean(water_potential, na.rm = T)) %>% 
+  pivot_wider(names_from = "type", values_from = "water_potential") %>% 
+  mutate(Ypd_Ymd = Ypd - Ymd) %>% 
+  ungroup()
+
+ggplot(Ypd_Ymd, aes(plot, Ypd_Ymd)) + 
+  geom_boxplot() + 
+  geom_jitter(width = 0.2)
+
+
+# 4. Read in sapflow -----------------------------------------------------------
+
+sapflow_raw <- read_csv("data/250421_sapflow_by_tree.csv")
+
+sapflow_trim <- sapflow_raw %>% 
+  filter(Date > "2023-06-08" & 
+           Date < "2023-06-14") %>% 
+  group_by(plot, species, sensor_id) %>% 
+  summarize(F_avg = mean(F_avg, na.rm = T))
+
+
+# 5. Calculate k! --------------------------------------------------------------
+
+## Join datasets and calculate k
+bgc <- inner_join(sapflow_trim, 
+                 Ypd_Ymd  %>% dplyr::select(-plot), 
+                 by = c("sensor_id" = "stem_id")) %>% 
+  mutate(k = F_avg / Ypd_Ymd) #%>% 
+# filter(k > -4)
+
+ggplot(bgc, aes(plot, k, fill = plot)) + 
+  geom_boxplot(alpha = 0.7, show.legend = F) + 
+  stat_compare_means(comparisons = list(c("Control", "Freshwater"), 
+                                        c("Control", "Saltwater"), 
+                                        c("Freshwater", "Saltwater")), 
+                     label = "p.signif") + 
+  labs(x = "") + 
+  scale_fill_manual(values = anyas_colors)
+ggsave("figures/supplemental/S4_belowground_conductance.png", width = 4, height = 4)
+
+
+################################################################################
+
+# Eh categories (Figure S5) ----------------------------------------------------
+
+swap %>% 
+  filter(datetime >= flood1 &
+           datetime <= flood1 + days(5)) %>%
+  group_by(plot, depth, eh_cat) %>% 
+  summarize(n_eh_cat = n()) %>% 
+  ungroup() %>% 
+  group_by(plot, depth) %>% 
+  mutate(perc = (n_eh_cat / sum(n_eh_cat)) * 100) %>% 
+  ggplot(aes(as.factor(depth), perc, fill = eh_cat)) + 
+  geom_col(position = "stack", width = 0.8, alpha = 0.7) + 
+  facet_wrap(~plot, ncol = 1)  + 
+  scale_fill_viridis_d(option = "D", direction = 1) + 
+  labs(x = "Depth (cm)", y = "Percent", fill = "") #+
+#theme(legend.position = "bottom")
+ggsave("figures/supplemental/S5_eh_categories.png", width = 5, height = 4)
+
+
+
+
