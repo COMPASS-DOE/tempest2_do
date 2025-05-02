@@ -24,7 +24,8 @@ anyas_colors = c("springgreen2", "cyan2", "violetred2")
 
 
 ```{r}
-df_raw <- read_csv("../data/250310_2023_sapflow.csv")
+#df_raw <- read_csv("../data/250502_2023_sapflow.csv") - data not cleaned for weather
+df_raw <- read_csv("../data/250502_2023_sapflow_cleaned.csv")
 
 ggplot(df_raw, aes(doy, color = plot)) + 
   geom_point(aes(y = f_avg), alpha = 0.4) + 
@@ -49,7 +50,7 @@ p1 <- ggplot(df_trim, aes(x = doy, color = plot)) +
   geom_vline(xintercept = flood_doy, linetype = "dashed") + 
   facet_wrap(~species, ncol = 1) + 
   scale_color_manual(values = anyas_colors) + 
-  labs(x = "Day of Year", y = "Sap flux (cm3/s)", color = "") + 
+  labs(x = "Day of Year", y = "Sap flux (cm3/h)", color = "") + 
   theme(legend.position = c(0.8, 0.6), 
         legend.background = element_blank(), 
         legend.key = element_rect(fill = NA, color = NA)) 
@@ -104,10 +105,10 @@ p2 <- ggplot(deltas, aes(x = doy)) +
   geom_line(aes(y = delta_fw_roll), color = anyas_colors[2]) + 
   geom_line(aes(y = delta_sw_roll), color = anyas_colors[3]) + 
   geom_smooth(data = deltas %>% filter(doy > flood_doy), 
-              aes(y = delta_fw), method  = "lm", se = F, 
+              aes(y = delta_fw), se = F, 
               alpha = 0.6, color = anyas_colors[2]) + 
   geom_smooth(data = deltas %>% filter(doy > flood_doy), 
-              aes(y = delta_sw), method  = "lm", se = F,
+              aes(y = delta_sw), se = F,
               alpha = 0.6, color = anyas_colors[3]) + 
   geom_vline(xintercept = flood_doy, linetype = "dashed") + 
   facet_wrap(~species, ncol = 1) + 
@@ -146,7 +147,7 @@ bind_rows(deltas %>%
 deltas_no_na <- deltas %>% 
   drop_na() 
 
-bind_rows(deltas_no_na %>% 
+sapflux_slopes_roll <- bind_rows(deltas_no_na %>% 
             ungroup() %>% 
             group_by(species) %>% 
             summarize(slope = sens.slope(delta_fw_roll)$estimates[1], 
@@ -158,6 +159,9 @@ bind_rows(deltas_no_na %>%
             summarize(slope = sens.slope(delta_sw_roll)$estimates[1], 
                       p = sens.slope(delta_sw_roll)$p.value) %>% 
             mutate(plot = "Saltwater"))
+
+write_csv(sapflux_slopes_roll, 
+          "../data/250502_sapflux_slopes_roll.csv")
 ```
 
 
