@@ -181,7 +181,7 @@ plot_veg <- function(var, y_label){
     stat_compare_means(comparisons = list(c("Control", "Fresh"), 
                                           c("Control", "Salt"), 
                                           c("Fresh", "Salt")), 
-                       label = "p.signif",) + 
+                       label = "p.signif") + 
     labs(x = "", y = y_label) + 
     scale_fill_manual(values = anyas_colors)
 }

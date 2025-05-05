@@ -247,30 +247,35 @@ par_and_rain_doy <- par_and_rain %>%
   group_by(date) %>% 
   summarize(rain_cm_day = sum(rain15, na.rm = T), 
             par_mean = mean(par15, na.rm = T), 
-            par_mean_11to12 = mean(par15[hour >= 11 & hour <= 12], na.rm = TRUE))
+            par_mean_11to14 = mean(par15[hour >= 11 & hour <= 14], na.rm = TRUE))
 
 ## Use the plots below to visually determine what "rainy" and "cloudy" mean
 cloudy_threshold = 500
 rainy_threshold = 1
 
-ggplot(par_and_rain_doy, aes(date, par_mean_11to12)) + 
+x1 <- ggplot(par_and_rain_doy, aes(date, par_mean_11to14)) + 
   geom_point(color = "gray") + 
   geom_hline(yintercept = cloudy_threshold) + 
   geom_point(data = par_and_rain_doy %>% 
-               filter(par_mean_11to12 < cloudy_threshold), 
+               filter(par_mean_11to14 < cloudy_threshold), 
              color = "red") + 
-  ggtitle("Gray = retained, Red = removed")
+  labs(x = "Mean PAR (11-14)") + 
+  ggtitle("Gray = retained, Red = removed (n=94)")
 
-ggplot(par_and_rain_doy, aes(date, rain_cm_day)) + 
+x2 <- ggplot(par_and_rain_doy, aes(date, rain_cm_day)) + 
   geom_point(color = "gray") + 
   geom_hline(yintercept = rainy_threshold) + 
   geom_point(data = par_and_rain_doy %>% 
                filter(rain_cm_day > rainy_threshold), 
              color = "red") + 
-  ggtitle("Gray = retained, Red = removed")
+  labs(x = "Rain (cm/day)") + 
+  ggtitle("Gray = retained, Red = removed (n=36)")
+
+plot_grid(x1, x2, nrow= 1)
+ggsave("figures/x_rain_par_cutoffs.png", width = 10, height = 4)
 
 dates_with_good_weather <- par_and_rain_doy %>% 
-  filter(par_mean_11to12 > cloudy_threshold) %>% #PAR is high enough
+  filter(par_mean_11to14 > cloudy_threshold) %>% #PAR is high enough
   filter(rain_cm_day < rainy_threshold) #Less than 1cm of rain
 
 
@@ -284,4 +289,18 @@ sf_rollmean_clean <- sf_plot_avg %>%
          year = year(date)) 
 
 write_csv(sf_rollmean_clean, "data/250502_2023_sapflow_cleaned.csv")
+
+## Comparison plots
+plot_grid(ggplot(sf_rollmean, aes(date, color = plot)) + 
+            geom_point(aes(y = f_avg), alpha = 0.2, show.legend = F) + 
+            geom_line(aes(y = f_roll), show.legend = F) + 
+            facet_wrap(~species, ncol = 1)+ 
+            ggtitle("No Rain/PAR filtering"), 
+          ggplot(sf_rollmean_clean, aes(date, color = plot)) + 
+            geom_point(aes(y = f_avg), alpha = 0.2, show.legend = F) + 
+            geom_line(aes(y = f_roll), show.legend = F) + 
+            facet_wrap(~species, ncol = 1) + 
+            ggtitle("Rain/PAR filtered"), 
+          nrow = 1)
+ggsave("figures/x_rain_par_sapflow_comparison.png", width = 10, height = 5)
 

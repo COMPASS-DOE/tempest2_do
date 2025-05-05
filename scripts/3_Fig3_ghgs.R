@@ -89,42 +89,28 @@ ghgs <- bind_rows(soil_ghg_flux %>%
   mutate(plot = ifelse(plot == "Estuarine", "Saltwater", plot))
 
 
-# ggplot(ghgs, aes(plot, co2, fill = condition, color = condition)) + 
-#   #geom_boxplot(alpha = 0.5) + 
-#   geom_violin(alpha = 0.4) +
-#   # geom_jitter(alpha = 0.5, 
-#   #            position = position_dodge(width = 1)) + 
-#   #facet_grid(type~measurement, scales = "free")
-#   facet_wrap(type~measurement, scales = "free") + 
-#   geom_tukey(where = "whisker")
-
-
-# ghgs %>% 
-#   filter(measurement == "flux" & type == "soil") %>% 
-#   ggplot(aes(condition, co2)) + 
-#   geom_boxplot(aes(fill = condition), show.legend = F, outlier.alpha = 0, alpha = 0.5) + 
-#   geom_jitter(alpha = 0.5, width = 0.1) + 
-#   facet_wrap(~plot, nrow = 1) +
-#   geom_tukey(where = "whisker") + 
-#   labs(x = "", y = "Soil CO2 flux (umol/m2/min)") + 
-#   scale_fill_viridis_d() 
-
-
-make_boxplot <- function(selected_measurement, selected_type, plot_title, y_lab, vert_just){
-  ghgs %>% 
+make_boxplot <- function(selected_measurement, selected_type, plot_title, y_lab, vert_just, y_scale){
+  
+  x <- ghgs %>% 
     mutate(condition2 = as.factor(case_when(condition == "0_preflood" ~ "Preflood", 
                                   condition == "1_flood" ~ "Flood", 
                                   condition == "2_postflood" ~ "Postflood"))) %>% 
     mutate(condition2 = fct_relevel(condition2, "Preflood")) %>% 
     filter(measurement == selected_measurement & 
-             type == selected_type) %>% 
+             type == selected_type) 
+  
+  x %>% 
     ggplot(aes(condition2, co2)) + 
     geom_boxplot(aes(fill = condition2), show.legend = F, outlier.shape = NA, 
                  alpha = 0.7) + 
     geom_jitter(aes(color = condition2), width = 0.2, size = 1.5, 
                 alpha = 0.6, show.legend = F) + 
     facet_wrap(~plot, nrow = 1) +
-    geom_tukey(where = "whisker", vjust = vert_just) + 
+    stat_compare_means(comparisons = list(c("Preflood", "Flood"), 
+                                          c("Preflood", "Postflood"),
+                                          c("Flood", "Postflood")), 
+                       label = "p.signif") + 
+    ylim(min(x$co2), max(x$co2) * y_scale) + 
     labs(x = "", y = y_lab, title = plot_title) + 
     theme_linedraw(base_size = 14) +
     theme(
@@ -143,16 +129,16 @@ make_boxplot <- function(selected_measurement, selected_type, plot_title, y_lab,
 
 
 soil_plots = plot_grid(make_boxplot("flux", "soil", 
-                                    "Soils", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5) + 
+                                    "Soils", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5, 1.3) + 
                          theme(axis.text.x=element_blank()), 
-                       make_boxplot("conc", "soil", "", expression(paste("C", O[2], " Concentration (ppm)")), -1), 
+                       make_boxplot("conc", "soil", "", expression(paste("C", O[2], " Concentration (ppm)")), -1, 1.3), 
                        ncol = 1, labels = c("A", "C"), 
                        align = "hv")
 
 tree_plots = plot_grid(make_boxplot("flux", "tree", 
-                                    "Trees", "", -2) + 
+                                    "Trees", "", -2, 1.3) + 
                          theme(axis.text.x=element_blank()), 
-                       make_boxplot("conc", "tree", "", "", -2), 
+                       make_boxplot("conc", "tree", "", "", -2, 1.3), 
                        ncol = 1, labels = c("B", "D"), 
                        align = "hv")
 
