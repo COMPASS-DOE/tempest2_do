@@ -2,7 +2,7 @@
 ## VWC, DO, and redox. Reorganizing this so VWC and conductivity are Figure 1, 
 ## and DO/redox are Figure 2.
 ##
-## 2025-03-03
+## 2025-03-03 (Updated 2025-05-07)
 ## Peter Regier
 ##
 # ########### #
@@ -103,6 +103,9 @@ ec_plot <- make_contour_plot(teros, ec, 30, "", "",
 do_plot <- make_contour_plot(firesting, do_percent_sat, 30, "", "Soil depth (cm)", 
                              "DO (% Sat)", 1, 0)
 
+do_plot_no_label <- make_contour_plot(firesting, do_percent_sat, 30, "", "", 
+                             "DO (% Sat)", 1, 0)
+
 redox_plot <- make_contour_plot(swap, eh_mv, 50,  "", "", 
                                 "Eh (mV)", 1, 0)
 
@@ -134,6 +137,20 @@ save_plot(plot_grid(do_plot, redox_plot,
                     nrow = 1, 
                     labels = c("A", "B")), 
           "2_do_redox")
+
+
+### Remaking as a single plot for PNAS
+fig1 <- plot_grid(vwc_plot, ec_plot, 
+          nrow = 1, 
+          labels = c("A", "B"))
+
+fig2 <- plot_grid(do_plot_no_label, redox_plot, 
+                  nrow = 1, 
+          labels = c("C", "D"))
+
+plot_grid(fig1, fig2, nrow = 1)
+ggsave("figures/x_new_Fig1.png", 
+       width = 15, height = 7)
 
 
 ## Calculate stats for paper
