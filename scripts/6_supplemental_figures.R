@@ -24,7 +24,8 @@ anyas_colors = c("springgreen2", "cyan2", "violetred2")
 prep_csvs <- function(path){
   read_csv(path) %>% 
     mutate(datetime_est = force_tz(datetime_est, tzone = common_tz)) %>% 
-    mutate(plot = case_when(plot == "Seawater" ~ "Estuarine", 
+    mutate(plot = case_when(plot == "Seawater" ~ "Saltwater", 
+                            plot == "Estuarine" ~ "Saltwater",
                             TRUE ~ plot)) %>% 
     label_flood_periods() %>% 
     filter(!is.na(period))
@@ -39,8 +40,6 @@ swap <- prep_csvs("data/240404_swap_final.csv") %>%
                             eh_mv < 400 & eh_mv >= 200 ~ "2. weakly reducing", 
                             eh_mv < 200 & eh_mv >= -100 ~ "3. moderately reducing", 
                             eh_mv < -100 ~ "4. strongly reducing"))
-
-
 
 
 ################################################################################
