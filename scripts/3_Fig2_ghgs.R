@@ -143,19 +143,19 @@ tree_plots = plot_grid(make_boxplot("flux", "tree",
                        align = "hv")
 
 plot_grid(soil_plots, tree_plots, nrow = 1)
-ggsave("figures/3_ghgs.png", width = 12, height = 10)
-ggsave("figures/3_ghgs.pdf", width = 12, height = 10)
+ggsave("figures/2_Fig2_ghgs.png", width = 12, height = 10)
+ggsave("figures/2_Fig2_ghgs.pdf", width = 12, height = 10)
 
-plot_grid(make_boxplot("flux", "soil", "", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5), 
-          make_boxplot("conc", "soil", "", expression(paste("C", O[2], " Concentration (ppm)")), -1), 
-          nrow = 1, labels = c("A", "B"), 
-          align = "hv")
-ggsave("figures/x_soil_ghgs.pdf", width = 12, height = 6)
-
-
-plot_grid(make_boxplot("flux", "soil", "", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5), 
-          make_boxplot("flux", "tree", "", "", -1), 
-          nrow = 1, labels = c("A", "B"), 
-          align = "hv")
-ggsave("figures/x_ghg_fluxes.pdf", width = 12, height = 6)
-ggsave("figures/x_ghg_fluxes.png", width = 12, height = 6)
+# plot_grid(make_boxplot("flux", "soil", "", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5), 
+#           make_boxplot("conc", "soil", "", expression(paste("C", O[2], " Concentration (ppm)")), -1), 
+#           nrow = 1, labels = c("A", "B"), 
+#           align = "hv")
+# ggsave("figures/x_soil_ghgs.pdf", width = 12, height = 6)
+# 
+# 
+# plot_grid(make_boxplot("flux", "soil", "", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5), 
+#           make_boxplot("flux", "tree", "", "", -1), 
+#           nrow = 1, labels = c("A", "B"), 
+#           align = "hv")
+# ggsave("figures/2_Fig2_ghg_fluxes.pdf", width = 12, height = 6)
+# ggsave("figures/2_Fig2_ghg_fluxes.png", width = 12, height = 6)

@@ -50,7 +50,7 @@ p1 <- ggplot(df_trim, aes(x = doy, color = plot)) +
   geom_vline(xintercept = flood_doy, linetype = "dashed") + 
   facet_wrap(~species, ncol = 1) + 
   scale_color_manual(values = anyas_colors) + 
-  labs(x = "Day of Year", y = "Sap flux (cm3/h)", color = "") + 
+  labs(x = "Day of Year", y = expression("Sap flux (cm"^3*"/h)"), color = "") + 
   theme(legend.position = c(0.8, 0.6), 
         legend.background = element_blank(), 
         legend.key = element_rect(fill = NA, color = NA)) 
@@ -169,9 +169,10 @@ write_csv(sapflux_slopes_roll,
 
 ```{r}
 plot_grid(p1, p2, nrow = 1, 
+          labels = c("A", "B"),
           rel_widths = c(1, 0.7))
-ggsave("../figures/4_sapflow.png", width = 10, height = 7)
-ggsave("../figures/4_sapflow.pdf", width = 10, height = 7)
+ggsave("../figures/3_Fig3_sapflow.png", width = 9, height = 6)
+ggsave("../figures/3_Fig3_sapflow.pdf", width = 9, height = 6)
 
 ```
 

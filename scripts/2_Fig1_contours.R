@@ -126,30 +126,30 @@ save_plot <- function(plot_to_save, name_string){
          width = plot_width, height = plot_height)
 }
 
-## Make Current Figure 1
-save_plot(plot_grid(vwc_plot, ec_plot, 
-                    nrow = 1, 
-                    labels = c("A", "B")), 
-          "1_vwc_ec")
-
-## Make Current Figure 2
-save_plot(plot_grid(do_plot, redox_plot, 
-                    nrow = 1, 
-                    labels = c("A", "B")), 
-          "2_do_redox")
+# ## Make Current Figure 1
+# save_plot(plot_grid(vwc_plot, ec_plot, 
+#                     nrow = 1, 
+#                     labels = c("A", "B")), 
+#           "1_vwc_ec")
+# 
+# ## Make Current Figure 2
+# save_plot(plot_grid(do_plot, redox_plot, 
+#                     nrow = 1, 
+#                     labels = c("A", "B")), 
+#           "2_do_redox")
 
 
 ### Remaking as a single plot for PNAS
-fig1 <- plot_grid(vwc_plot, ec_plot, 
+fig1ab <- plot_grid(vwc_plot, ec_plot, 
           nrow = 1, 
           labels = c("A", "B"))
 
-fig2 <- plot_grid(do_plot_no_label, redox_plot, 
+fig1cd <- plot_grid(do_plot_no_label, redox_plot, 
                   nrow = 1, 
           labels = c("C", "D"))
 
-plot_grid(fig1, fig2, nrow = 1)
-ggsave("figures/x_new_Fig1.png", 
+plot_grid(fig1ab, fig1cd, nrow = 1)
+ggsave("figures/1_Fig1.png", 
        width = 15, height = 7)
 
 

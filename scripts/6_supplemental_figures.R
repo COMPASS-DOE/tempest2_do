@@ -282,9 +282,23 @@ swap %>%
   geom_col(position = "stack", width = 0.8, alpha = 0.7) + 
   facet_wrap(~plot, ncol = 1)  + 
   scale_fill_viridis_d(option = "D", direction = 1) + 
-  labs(x = "Depth (cm)", y = "Percent", fill = "") #+
-#theme(legend.position = "bottom")
+  labs(x = "Depth (cm)", y = "Percent", fill = "")
 ggsave("figures/supplemental/S5_eh_categories.png", width = 5, height = 4)
+
+
+
+
+
+
+696 / (12*24)
+
+swap %>% 
+  filter(datetime >= flood1 &
+           datetime <= flood1 + days(5)) %>% 
+  tail()
+  summarize(min(datetime), max(datetime))
+
+
 
 
 
