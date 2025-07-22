@@ -44,6 +44,42 @@ swap <- prep_csvs("data/240404_swap_final.csv") %>%
 
 ################################################################################
 
+# Site map and flooding ts (Figure S1) -----------------------------------------
+
+flood_ts <- tibble(datetime = seq(from = flood1[1] - hours(29), 
+                                  to = flood2[1] + hours(67), by = "5 min"), 
+                   water_applied = case_when(datetime >= flood1[1] & 
+                                               datetime < flood1[1] + hours(10) ~ (15/10)/12,
+                                             datetime >= flood2[1] & 
+                                               datetime < flood2[1] + hours(10) ~ (15/10)/12,
+                   TRUE ~ 0), 
+                   cumulative_flooding = cumsum(water_applied))
+
+ggplot(flood_ts, aes(datetime, cumulative_flooding)) + 
+  geom_line() +
+  annotate(geom = "rect", xmin = flood1[1], xmax = flood1[2], 
+           ymin = 0, ymax = 30,
+           fill = "blue", alpha = 0.1) + 
+  annotate(geom = "rect", xmin = flood2[1], xmax = flood2[2], 
+           ymin = 0, ymax = 30,
+           fill = "blue", alpha = 0.1) + 
+  # geom_segment(aes(y = 32, yend = 32, 
+  #                  x = flood1[1] - hours(29), xend = flood1[1]), color = "gray") + 
+  # annotate(geom = "text", x = flood1[1] - hours(15), y = 35, label = "Pre-flood") + 
+  # geom_segment(aes(y = 32, yend = 32, 
+  #                  x = flood1[1], xend = flood2[2]), color = "blue") + 
+  # annotate(geom = "text", x = flood2[1] - hours(6), y = 35, label = "Flood") + 
+  # geom_segment(aes(y = 32, yend = 32, 
+  #                  x = flood2[2], xend = flood2[2] + hours(48)), color = "gray") + 
+  # annotate(geom = "text", x = flood2[1] + hours(40), y = 35, label = "Post-flood") + 
+  # ylim(0, 38) + 
+  labs(x = "", y = "Total water \n added (cm)")
+ggsave("figures/supplemental/S1_ts.png", width = 8, height = 2)
+ggsave("figures/supplemental/S1_ts.pdf", width = 8, height = 2)
+
+
+################################################################################
+
 # DO consumption rates (Figure S2) ---------------------------------------------
 
 ## Code taken from 231019_Figure4_anoxia_hypoxia_rates.R then modified
@@ -285,18 +321,6 @@ swap %>%
   labs(x = "Depth (cm)", y = "Percent", fill = "")
 ggsave("figures/supplemental/S5_eh_categories.png", width = 5, height = 4)
 
-
-
-
-
-
-696 / (12*24)
-
-swap %>% 
-  filter(datetime >= flood1 &
-           datetime <= flood1 + days(5)) %>% 
-  tail()
-  summarize(min(datetime), max(datetime))
 
 
 
