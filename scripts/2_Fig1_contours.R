@@ -61,6 +61,16 @@ make_contour_plot <- function(data, var, max_depth, x_lab, y_lab,
     geom_vline(aes(xintercept = dump_start2), color = "white", linetype = "dashed") + 
     facet_wrap(~plot, ncol = 1) + 
     scale_x_datetime(expand = c(0,0)) + 
+    # scale_x_datetime(
+    #   # Create breaks every 2 days, starting from second day
+    #   breaks = function(x) {
+    #     date_range <- as.Date(range(x))
+    #     second_day <- as.POSIXct(date_range[1] + 1)
+    #     seq(from = second_day, to = max(x)-days(0), by = "2 day")  # Change "2 day" to adjust frequency
+    #   },
+    #   labels = scales::date_format("%b %d"),
+    #   expand = c(0, 0)
+    # ) + 
     scale_y_reverse(expand = c(0,0)) + 
     scale_fill_viridis_d(option = "mako", 
                          direction = fill_direction, 
@@ -90,6 +100,7 @@ make_contour_plot <- function(data, var, max_depth, x_lab, y_lab,
 
   plot_grid(data_plot, legend, ncol = 1, rel_heights = c(1, 0.1))
 }
+
 
 
 # 3. Create plots --------------------------------------------------------------
@@ -126,18 +137,6 @@ save_plot <- function(plot_to_save, name_string){
          width = plot_width, height = plot_height)
 }
 
-# ## Make Current Figure 1
-# save_plot(plot_grid(vwc_plot, ec_plot, 
-#                     nrow = 1, 
-#                     labels = c("A", "B")), 
-#           "1_vwc_ec")
-# 
-# ## Make Current Figure 2
-# save_plot(plot_grid(do_plot, redox_plot, 
-#                     nrow = 1, 
-#                     labels = c("A", "B")), 
-#           "2_do_redox")
-
 
 ### Remaking as a single plot for PNAS
 fig1ab <- plot_grid(vwc_plot, ec_plot, 
@@ -152,6 +151,8 @@ plot_grid(fig1ab, fig1cd, nrow = 1)
 ggsave("figures/1_Fig1.png", 
        width = 15, height = 7)
 
+ggsave("figures/1_Fig1.pdf", 
+       width = 15, height = 7, dpi = 400)
 
 ## Calculate stats for paper
 ## First, I'd like to know if post-flood values return to pre-flood values. I'll

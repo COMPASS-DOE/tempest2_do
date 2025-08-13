@@ -2,7 +2,7 @@
 ## It will be long since it will require redoing many analyses, but at least
 ## things will be consolidated
 ##
-## 2024-04-15
+## 2024-04-15 (updated 2025-07-23)
 ## Peter Regier 
 ## 
 ##
@@ -187,11 +187,29 @@ plot_grid(sb_p1, plot_grid(sb_p2, sb_p3, ncol = 1, labels = c("B", "C")),
 ggsave("figures/supplemental/S2_DO_stats.png", width = 8, height = 5)
 
 
+################################################################################
+
+# Eh categories (Figure S3) ----------------------------------------------------
+
+swap %>% 
+  filter(datetime >= flood1 &
+           datetime <= flood1 + days(5)) %>%
+  group_by(plot, depth, eh_cat) %>% 
+  summarize(n_eh_cat = n()) %>% 
+  ungroup() %>% 
+  group_by(plot, depth) %>% 
+  mutate(perc = (n_eh_cat / sum(n_eh_cat)) * 100) %>% 
+  ggplot(aes(as.factor(depth), perc, fill = eh_cat)) + 
+  geom_col(position = "stack", width = 0.8, alpha = 0.7) + 
+  facet_wrap(~plot, ncol = 1)  + 
+  scale_fill_viridis_d(option = "D", direction = 1) + 
+  labs(x = "Depth (cm)", y = "Percent", fill = "")
+ggsave("figures/supplemental/S3_eh_categories.png", width = 5, height = 4)
+
 
 ################################################################################
 
-
-# Leaf stress metrics (Figure S3) ----------------------------------------------
+# Leaf stress metrics (Figure S4) ----------------------------------------------
 
 ## Read in vegetation metrics
 ## ci = intercellular CO2 (ppm)
@@ -224,12 +242,12 @@ plot_veg <- function(var, y_label){
 plot_grid(plot_veg(a, "Photosynthesis rate (umol/m2/min)"), 
                         plot_veg(gs, "Stomatal conductance (mol/m2/min)"), 
                         nrow = 1, labels = c("A", "B"))
-ggsave("figures/supplemental/S3_vegetation_responses.png", width = 7, height = 4)
+ggsave("figures/supplemental/S4_vegetation_responses.png", width = 7, height = 4)
 
 
 ################################################################################
 
-# Belowground conductance (Figure S4) ------------------------------------------
+# Belowground conductance (Figure S5) ------------------------------------------
 
 p_load(readxl)
 
@@ -299,30 +317,55 @@ ggplot(bgc, aes(plot, k, fill = plot)) +
                      label = "p.signif") + 
   labs(x = "") + 
   scale_fill_manual(values = anyas_colors)
-ggsave("figures/supplemental/S4_belowground_conductance.png", width = 4, height = 4)
+ggsave("figures/supplemental/S5_belowground_conductance.png", width = 4, height = 4)
+
 
 
 ################################################################################
 
-# Eh categories (Figure S5) ----------------------------------------------------
+# Precipitation time-series with extremes (Figure S6) --------------------------
 
-swap %>% 
-  filter(datetime >= flood1 &
-           datetime <= flood1 + days(5)) %>%
-  group_by(plot, depth, eh_cat) %>% 
-  summarize(n_eh_cat = n()) %>% 
-  ungroup() %>% 
-  group_by(plot, depth) %>% 
-  mutate(perc = (n_eh_cat / sum(n_eh_cat)) * 100) %>% 
-  ggplot(aes(as.factor(depth), perc, fill = eh_cat)) + 
-  geom_col(position = "stack", width = 0.8, alpha = 0.7) + 
-  facet_wrap(~plot, ncol = 1)  + 
-  scale_fill_viridis_d(option = "D", direction = 1) + 
-  labs(x = "Depth (cm)", y = "Percent", fill = "")
-ggsave("figures/supplemental/S5_eh_categories.png", width = 5, height = 4)
+p_load(AOI, climateR, 
+       extRemes, ## Used to calculate extreme value theory metrics
+       tictoc)
 
+## Parameters listed here: https://docs.hyriver.io/examples/notebooks/gridmet.html
+tic("read data")
+precip_raw <- aoi_ext("Annapolis", units = "km", bbox = TRUE) %>% 
+  getGridMET(AOI = .,
+             varname   = c("pr"),
+             startDate = "1995-01-01", 
+             endDate = "2025-01-01") %>% 
+  as_tibble() %>% 
+  mutate(precip_cm = pr / 10)
+toc()
 
+# Step 1: Extract annual maximum precipitation
+annual_max <- precip_raw %>%
+  mutate(year = year(date)) %>%
+  group_by(year) %>%
+  summarize(annual_max_precip_cm = max(precip_cm, na.rm = TRUE)) %>%
+  ungroup()
 
+# Step 2: Fit the Generalized Extreme Value (GEV) distribution to annual maxima
+gev_fit <- fevd(annual_max$annual_max_precip_cm, type = "GEV")
+
+# Step 3: Calculate return levels for different return periods
+return_periods <- c(10, 100, 1000)
+return_levels <- return.level(gev_fit, return.period = return_periods)
+
+ggplot(precip_raw, aes(x = date, y = precip_cm)) + 
+  geom_line(color = "lightblue") +   
+  geom_point(data = precip_raw %>% filter(as_date(date) == "2012-10-29"), color = "red") + 
+  geom_hline(aes(yintercept = return_levels[[1]]), color = "gray40", linetype = "dashed") + 
+  geom_hline(aes(yintercept = return_levels[[2]]), color = "gray40", linetype = "dashed") + 
+  geom_hline(aes(yintercept = return_levels[[3]]), color = "gray40", linetype = "dashed") + 
+  annotate(geom = "text", x = as.POSIXct("2022-11-29"), y = return_levels[[1]] - 0.75, label = "10-year storm", color = "gray40") + 
+  annotate(geom = "text", x = as.POSIXct("2022-11-29"), y = return_levels[[2]] - 0.75, label = "100-year storm", color = "gray40") + 
+  annotate(geom = "text", x = as.POSIXct("2022-11-29"), y = return_levels[[3]] - 0.75, label = "1000-year storm", color = "gray40") + 
+  annotate(geom = "text", x = as.POSIXct("2012-11-29"), y = 18, label = "Hurricane Sandy", color = "red") + 
+  labs(x = "", y = "Daily total precip. (cm)")
+ggsave("figures/supplemental/S6_precip_timeseries.png", width = 6, height = 4)
 
 
 

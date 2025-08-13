@@ -132,14 +132,14 @@ soil_plots = plot_grid(make_boxplot("flux", "soil",
                                     "Soils", expression(paste("C", O[2], " Flux (", mu, "mol/", m^2, "/s)")), -5, 1.3) + 
                          theme(axis.text.x=element_blank()), 
                        make_boxplot("conc", "soil", "", expression(paste("C", O[2], " Concentration (ppm)")), -1, 1.3), 
-                       ncol = 1, labels = c("A", "C"), 
+                       ncol = 1, labels = c("A", "B"), 
                        align = "hv")
 
 tree_plots = plot_grid(make_boxplot("flux", "tree", 
                                     "Trees", "", -2, 1.3) + 
                          theme(axis.text.x=element_blank()), 
                        make_boxplot("conc", "tree", "", "", -2, 1.3), 
-                       ncol = 1, labels = c("B", "D"), 
+                       ncol = 1, labels = c("C", "D"), 
                        align = "hv")
 
 plot_grid(soil_plots, tree_plots, nrow = 1)

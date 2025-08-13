@@ -24,8 +24,10 @@ anyas_colors = c("springgreen2", "cyan2", "violetred2")
 
 
 ```{r}
-#df_raw <- read_csv("../data/250502_2023_sapflow.csv") - data not cleaned for weather
-df_raw <- read_csv("../data/250502_2023_sapflow_cleaned.csv")
+df_raw <- read_csv("../data/250502_2023_sapflow.csv") %>%  #- data not cleaned for weather
+  mutate(f_avg = f_avg * 3600, 
+         f_roll = f_roll * 3600)
+#df_raw <- read_csv("../data/250502_2023_sapflow_cleaned.csv")
 
 ggplot(df_raw, aes(doy, color = plot)) + 
   geom_point(aes(y = f_avg), alpha = 0.4) + 
@@ -105,10 +107,12 @@ p2 <- ggplot(deltas, aes(x = doy)) +
   geom_line(aes(y = delta_fw_roll), color = anyas_colors[2]) + 
   geom_line(aes(y = delta_sw_roll), color = anyas_colors[3]) + 
   geom_smooth(data = deltas %>% filter(doy > flood_doy), 
-              aes(y = delta_fw), se = F, 
+              aes(y = delta_fw), 
+              method = "lm", se = F, 
               alpha = 0.6, color = anyas_colors[2]) + 
   geom_smooth(data = deltas %>% filter(doy > flood_doy), 
-              aes(y = delta_sw), se = F,
+              aes(y = delta_sw), 
+              method = "lm", se = F,
               alpha = 0.6, color = anyas_colors[3]) + 
   geom_vline(xintercept = flood_doy, linetype = "dashed") + 
   facet_wrap(~species, ncol = 1) + 
@@ -141,7 +145,7 @@ bind_rows(deltas %>%
             mutate(plot = "Saltwater"))
 ```
 
-#### The same stats but for rolling means
+#### The same stats
 ```{r}
 
 deltas_no_na <- deltas %>% 

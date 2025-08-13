@@ -11,11 +11,19 @@
 
 # 1. Setup ---------------------------------------------------------------------
 
+rm(list = ls())
+
 ## Load setup script
 source("scripts/0_0_setup.R")
 source("data/from_kendal/create_inventory.R")
-p_load(broom, multcomp, zoo, ggallin)
+p_load(broom, multcomp, zoo, ggallin, trend)
 
+anyas_colors = c("springgreen2", "cyan2", "violetred2")
+
+
+################################################################################
+##### Initial data setup #######################################################
+################################################################################
 
 # 2. Read in sapflow -----------------------------------------------------------
 
@@ -167,14 +175,15 @@ sf_plot_avg <- sf_scaled %>%
   filter(Hour >= 11, Hour <= 14) %>%  ## Decision made by consensus
   filter(F <= 0.005, F >= 0) %>% ## Based on KAM's threshold
   group_by(plot, species, Date) %>% 
-  summarise(F_avg = mean(F * 3600, na.rm = TRUE)) #cm3/s to cm3/hr
+  summarise(F_avg = mean(F, na.rm = TRUE))
 
 ggplot(sf_plot_avg) + 
   geom_point(aes (x = Date, y = F_avg, color = species)) + 
   facet_wrap(~plot, ncol = 1, scales = "fixed") + 
   labs(y = "Avg Sap Flux Density", x = "Date", title = "Sap Flux Density Averaged Daily, 11 AM - 2 PM")
 
-# Add rolling means
+ 
+# 8. Add rolling means ---------------------------------------------------------
 
 roll_length = 10
 
@@ -197,110 +206,70 @@ sf_rollmean %>%
 write_csv(sf_rollmean, "data/250502_2023_sapflow.csv")
 
 
-# Optionally, let's clean based on clouds and rain
+## While these values are sensible for cm3/s and Kendal's threshold, these are
+## not the units you are looking for. Let's convert to cm3/hr
+ggplot(sf_rollmean, aes(doy, color = plot)) + 
+  geom_point(aes(y = f_avg), alpha = 0.4) + 
+  geom_line(aes(y = f_roll)) + 
+  facet_wrap(~species, ncol = 1)
 
-# X. Read in BP and PAR --------------------------------------------------------
+## That looks more reasonable
+sf_per_hour <- sf_rollmean %>% 
+  mutate(f_avg_hr = f_avg * 60 * 60, 
+         f_roll_hr = f_roll * 60 * 60) %>% 
+  dplyr::select(-c(f_avg, f_roll))
 
-list_gcw_files <- function(folder){
-  list.files(paste0("data/l1_raw_files/GCW/", folder), 
-             pattern = ".csv", 
-             recursive = TRUE, 
-             full.names = TRUE)
+ggplot(sf_per_hour, aes(doy, color = plot)) + 
+  geom_point(aes(y = f_avg_hr), alpha = 0.4) + 
+  geom_line(aes(y = f_roll_hr)) + 
+  facet_wrap(~species, ncol = 1)
+
+write_csv(sf_per_hour, "data/250813_sapflow_for_Fig4.csv")
+
+
+################################################################################
+##### Calculate slopes for Table S4 ############################################
+################################################################################
+
+calculate_deltas <- function(selected_spp){
+  
+  ## Set constants
+  roll_length = 10
+  
+  df_trim2 %>% 
+    filter(species == selected_spp) %>% 
+    dplyr::select(plot, doy, f_avg_n) %>% 
+    pivot_wider(names_from = "plot", values_from = "f_avg_n") %>% 
+    mutate(delta_sw = Saltwater - Control, 
+           delta_fw = Freshwater - Control) %>% 
+    mutate(delta_sw_roll = zoo::rollmean(delta_sw, roll_length, fill = NA), 
+           delta_fw_roll = zoo::rollmean(delta_fw, roll_length, fill = NA)) %>% 
+    mutate(species = selected_spp)
 }
 
-#folders <- c("GCW_2021", "GCW_2022", "GCW_2023")
-folders <- c("GCW_2023")
+deltas <- bind_rows(calculate_deltas("Tulip Poplar"), 
+                    calculate_deltas("Beech"), 
+                    calculate_deltas("Red Maple"))
 
-gcw_files <- unlist(lapply(folders, list_gcw_files))
+deltas_no_na <- deltas %>% 
+  drop_na() 
 
-## From the metadata: 
-#
-# wx_par_den15 (µmol/m2/s): Average photosynthetically active radiation (PAR) 
-# flux density over 15 minute period; site specific correction factor applied   
-#
-# wx_gcrew_rain15 (cm): Total rain over 15 minute period IN CENTIMETERS; from the 
-# GCREW met station and only appears at GCW-W
+sapflux_slopes_roll <- bind_rows(deltas_no_na %>% 
+                                   ungroup() %>% 
+                                   group_by(species) %>% 
+                                   summarize(slope = sens.slope(delta_fw_roll)$estimates[1], 
+                                             p = sens.slope(delta_fw_roll)$p.value) %>% 
+                                   mutate(plot = "Freshwater"), 
+                                 deltas_no_na %>% 
+                                   ungroup() %>% 
+                                   group_by(species) %>% 
+                                   summarize(slope = sens.slope(delta_sw_roll)$estimates[1], 
+                                             p = sens.slope(delta_sw_roll)$p.value) %>% 
+                                   mutate(plot = "Saltwater"))
 
-read_in_gcw <- function(f) {
-  
-  message("Reading ", basename(f))
-  
-  variables <- c("wx_gcrew_rain15", "wx_par_den15")
-  
-  read_csv(f) %>%
-    clean_names() %>%
-    filter(research_name %in% variables) %>% 
-    dplyr::select(timestamp, research_name, value) %>% 
-    mutate(research_name = case_when(research_name == "wx_par_den15" ~ "par15", 
-                                     research_name == "wx_gcrew_rain15" ~ "rain15")) %>% 
-    pivot_wider(names_from = "research_name", values_from = "value")
-}
+sapflux_slopes_roll
 
-par_and_rain <- gcw_files %>% 
-  map(read_in_gcw) %>% 
-  bind_rows()
+write_csv(sapflux_slopes_roll, 
+          "../data/250502_sapflux_slopes_roll.csv")
 
-par_and_rain_doy <- par_and_rain %>% 
-  mutate(date = as_date(timestamp), 
-         hour = hour(timestamp)) %>% 
-  mutate(par_umol_m2_day = par15 / (60*60*24)) %>% 
-  group_by(date) %>% 
-  summarize(rain_cm_day = sum(rain15, na.rm = T), 
-            par_mean = mean(par15, na.rm = T), 
-            par_mean_11to14 = mean(par15[hour >= 11 & hour <= 14], na.rm = TRUE))
-
-## Use the plots below to visually determine what "rainy" and "cloudy" mean
-cloudy_threshold = 500
-rainy_threshold = 1
-
-x1 <- ggplot(par_and_rain_doy, aes(date, par_mean_11to14)) + 
-  geom_point(color = "gray") + 
-  geom_hline(yintercept = cloudy_threshold) + 
-  geom_point(data = par_and_rain_doy %>% 
-               filter(par_mean_11to14 < cloudy_threshold), 
-             color = "red") + 
-  labs(x = "Mean PAR (11-14)") + 
-  ggtitle("Gray = retained, Red = removed (n=94)")
-
-x2 <- ggplot(par_and_rain_doy, aes(date, rain_cm_day)) + 
-  geom_point(color = "gray") + 
-  geom_hline(yintercept = rainy_threshold) + 
-  geom_point(data = par_and_rain_doy %>% 
-               filter(rain_cm_day > rainy_threshold), 
-             color = "red") + 
-  labs(x = "Rain (cm/day)") + 
-  ggtitle("Gray = retained, Red = removed (n=36)")
-
-plot_grid(x1, x2, nrow= 1)
-ggsave("figures/x_rain_par_cutoffs.png", width = 10, height = 4)
-
-dates_with_good_weather <- par_and_rain_doy %>% 
-  filter(par_mean_11to14 > cloudy_threshold) %>% #PAR is high enough
-  filter(rain_cm_day < rainy_threshold) #Less than 1cm of rain
-
-
-sf_rollmean_clean <- sf_plot_avg %>% 
-  clean_names() %>% 
-  filter(date %in% dates_with_good_weather$date) %>% 
-  ungroup() %>% 
-  group_by(plot, species) %>% 
-  mutate(f_roll = zoo::rollmean(f_avg, roll_length, fill = NA)) %>% 
-  mutate(doy = yday(date),
-         year = year(date)) 
-
-write_csv(sf_rollmean_clean, "data/250502_2023_sapflow_cleaned.csv")
-
-## Comparison plots
-plot_grid(ggplot(sf_rollmean, aes(date, color = plot)) + 
-            geom_point(aes(y = f_avg), alpha = 0.2, show.legend = F) + 
-            geom_line(aes(y = f_roll), show.legend = F) + 
-            facet_wrap(~species, ncol = 1)+ 
-            ggtitle("No Rain/PAR filtering"), 
-          ggplot(sf_rollmean_clean, aes(date, color = plot)) + 
-            geom_point(aes(y = f_avg), alpha = 0.2, show.legend = F) + 
-            geom_line(aes(y = f_roll), show.legend = F) + 
-            facet_wrap(~species, ncol = 1) + 
-            ggtitle("Rain/PAR filtered"), 
-          nrow = 1)
-ggsave("figures/x_rain_par_sapflow_comparison.png", width = 10, height = 5)
 
