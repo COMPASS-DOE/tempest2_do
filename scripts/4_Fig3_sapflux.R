@@ -17,6 +17,8 @@ p_load(ggallin)
 
 anyas_colors = c("springgreen2", "cyan2", "violetred2")
 
+sf_per_hour <- read_csv("data/250813_sapflow_for_Fig4.csv")
+
 
 # 2. First plot ----------------------------------------------------------------
 
@@ -37,7 +39,8 @@ p1 <- ggplot(df_trim, aes(x = doy, color = plot)) +
         legend.background = element_blank(), 
         legend.key = element_rect(fill = NA, color = NA)) 
 
-# 3. Normalize data -----------------------------------------------------------
+
+# 3. Calculate deltas ----------------------------------------------------------
 
 df_trim2 <- df_trim %>% 
   group_by(plot, species) %>% 
@@ -64,7 +67,10 @@ deltas <- bind_rows(calculate_deltas("Tulip Poplar"),
                     calculate_deltas("Beech"), 
                     calculate_deltas("Red Maple"))
 
-ggplot(deltas, aes(x = doy)) + 
+
+# 4. Second plot ---------------------------------------------------------------
+
+p2 <- ggplot(deltas, aes(x = doy)) + 
   geom_point(aes(y = delta_fw), alpha = 0.4, color = anyas_colors[2]) + 
   geom_point(aes(y = delta_sw), alpha = 0.4, color = anyas_colors[3]) + 
   geom_line(aes(y = delta_fw_roll), color = anyas_colors[2]) + 
@@ -83,3 +89,13 @@ ggplot(deltas, aes(x = doy)) +
   theme(legend.position = c(0.8, 0.6), 
         legend.background = element_blank(), 
         legend.key = element_rect(fill = NA, color = NA)) 
+
+
+# 5. Combine and export --------------------------------------------------------
+
+plot_grid(p1, p2, nrow = 1, 
+          labels = c("A", "B"),
+          rel_widths = c(1, 0.7))
+ggsave("figures/3_Fig3_sapflow.png", width = 9, height = 6)
+ggsave("figures/3_Fig3_sapflow.pdf", width = 9, height = 6)
+

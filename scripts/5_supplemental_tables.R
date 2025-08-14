@@ -23,8 +23,7 @@ p_load(gt,
 medians_and_ranges <- read_csv("data/stats_by_depth_and_period.csv")
 friedman <- read_csv("data/250410_sensor_friedman_results.csv")
 wilcoxon <- read_csv("data/250410_sensor_wilcoxon_results.csv")
-sapflux_slopes_roll <- read_csv("data/250502_sapflux_slopes_roll.csv")
-#sapflux <- read_csv("data/250502_2023_sapflow.csv")
+sapflux_slopes_roll <- read_csv("data/250813_sapflux_slopes_roll.csv")
 
 
 # 3. Table S1 - pairwise comparisons -------------------------------------------

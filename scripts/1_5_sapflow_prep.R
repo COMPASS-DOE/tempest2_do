@@ -224,19 +224,116 @@ ggplot(sf_per_hour, aes(doy, color = plot)) +
   geom_line(aes(y = f_roll_hr)) + 
   facet_wrap(~species, ncol = 1)
 
-write_csv(sf_per_hour, "data/250813_sapflow_for_Fig4.csv")
+
+################################################################################
+##### Remove bad weather #######################################################
+################################################################################
+
+# X. Read in BP and PAR --------------------------------------------------------
+
+list_gcw_files <- function(folder){
+  list.files(paste0("data/l1_raw_files/GCW/", folder), 
+             pattern = ".csv", 
+             recursive = TRUE, 
+             full.names = TRUE)
+}
+
+#folders <- c("GCW_2021", "GCW_2022", "GCW_2023")
+folders <- c("GCW_2023")
+
+gcw_files <- unlist(lapply(folders, list_gcw_files))
+
+## From the metadata: 
+#
+# wx_par_den15 (µmol/m2/s): Average photosynthetically active radiation (PAR) 
+# flux density over 15 minute period; site specific correction factor applied   
+#
+# wx_gcrew_rain15 (cm): Total rain over 15 minute period IN CENTIMETERS; from the 
+# GCREW met station and only appears at GCW-W
+
+read_in_gcw <- function(f) {
+  
+  message("Reading ", basename(f))
+  
+  variables <- c("wx_gcrew_rain15", "wx_par_den15")
+  
+  read_csv(f) %>%
+    clean_names() %>%
+    filter(research_name %in% variables) %>% 
+    dplyr::select(timestamp, research_name, value) %>% 
+    mutate(research_name = case_when(research_name == "wx_par_den15" ~ "par15", 
+                                     research_name == "wx_gcrew_rain15" ~ "rain15")) %>% 
+    pivot_wider(names_from = "research_name", values_from = "value")
+}
+
+par_and_rain <- gcw_files %>% 
+  map(read_in_gcw) %>% 
+  bind_rows()
+
+par_and_rain_doy <- par_and_rain %>% 
+  mutate(date = as_date(timestamp), 
+         hour = hour(timestamp)) %>% 
+  mutate(par_umol_m2_day = par15 / (60*60*24)) %>% 
+  group_by(date) %>% 
+  summarize(rain_cm_day = sum(rain15, na.rm = T), 
+            par_mean = mean(par15, na.rm = T), 
+            par_mean_11to12 = mean(par15[hour >= 11 & hour <= 12], na.rm = TRUE))
+
+## Use the plots below to visually determine what "rainy" and "cloudy" mean
+cloudy_threshold = 500
+rainy_threshold = 1
+
+ggplot(par_and_rain_doy, aes(date, par_mean_11to12)) + 
+  geom_point(color = "gray") + 
+  geom_hline(yintercept = cloudy_threshold) + 
+  geom_point(data = par_and_rain_doy %>% 
+               filter(par_mean_11to12 < cloudy_threshold), 
+             color = "red") + 
+  ggtitle("Gray = retained, Red = removed")
+
+ggplot(par_and_rain_doy, aes(date, rain_cm_day)) + 
+  geom_point(color = "gray") + 
+  geom_hline(yintercept = rainy_threshold) + 
+  geom_point(data = par_and_rain_doy %>% 
+               filter(rain_cm_day > rainy_threshold), 
+             color = "red") + 
+  ggtitle("Gray = retained, Red = removed")
+
+dates_with_good_weather <- par_and_rain_doy %>% 
+  filter(par_mean_11to12 > cloudy_threshold) %>% #PAR is high enough
+  filter(rain_cm_day < rainy_threshold) #Less than 1cm of rain
+
+
+## Filter out days with bad data and calculate rolling means
+
+sf_per_hour_weather <- sf_per_hour %>% 
+filter(date %in% dates_with_good_weather$date)
+
+write_csv(sf_per_hour_weather, "data/250813_sapflow_for_Fig4.csv")
 
 
 ################################################################################
-##### Calculate slopes for Table S4 ############################################
+##### Compare slopes for Table S4 ##############################################
 ################################################################################
 
-calculate_deltas <- function(selected_spp){
+## Create two datasets (just for the fun of comparing)
+df_trim <- sf_per_hour %>% 
+  filter(doy > 100 & doy < 300)
+
+df_trim_weather <- sf_per_hour_weather %>% 
+  filter(doy > 100 & doy < 300)
+
+
+## Calculate deltas
+calculate_deltas <- function(data, selected_spp){
   
   ## Set constants
   roll_length = 10
   
-  df_trim2 %>% 
+  data %>% 
+    group_by(plot, species) %>% 
+    mutate(pre_mean = mean(f_avg_hr[doy < flood_doy])) %>% 
+    mutate(f_avg_n = f_avg_hr - pre_mean) %>% 
     filter(species == selected_spp) %>% 
     dplyr::select(plot, doy, f_avg_n) %>% 
     pivot_wider(names_from = "plot", values_from = "f_avg_n") %>% 
@@ -247,29 +344,45 @@ calculate_deltas <- function(selected_spp){
     mutate(species = selected_spp)
 }
 
-deltas <- bind_rows(calculate_deltas("Tulip Poplar"), 
-                    calculate_deltas("Beech"), 
-                    calculate_deltas("Red Maple"))
+deltas <- bind_rows(calculate_deltas(df_trim, "Tulip Poplar"), 
+                    calculate_deltas(df_trim, "Beech"), 
+                    calculate_deltas(df_trim, "Red Maple")) %>% 
+  drop_na()
 
-deltas_no_na <- deltas %>% 
-  drop_na() 
+deltas_weather <- bind_rows(calculate_deltas(df_trim_weather, "Tulip Poplar"), 
+                    calculate_deltas(df_trim_weather, "Beech"), 
+                    calculate_deltas(df_trim_weather, "Red Maple")) %>% 
+  drop_na()
 
-sapflux_slopes_roll <- bind_rows(deltas_no_na %>% 
-                                   ungroup() %>% 
-                                   group_by(species) %>% 
-                                   summarize(slope = sens.slope(delta_fw_roll)$estimates[1], 
-                                             p = sens.slope(delta_fw_roll)$p.value) %>% 
-                                   mutate(plot = "Freshwater"), 
-                                 deltas_no_na %>% 
-                                   ungroup() %>% 
-                                   group_by(species) %>% 
-                                   summarize(slope = sens.slope(delta_sw_roll)$estimates[1], 
-                                             p = sens.slope(delta_sw_roll)$p.value) %>% 
-                                   mutate(plot = "Saltwater"))
 
-sapflux_slopes_roll
+## Make table
+
+slopes_table <- function(delta_dataset){
+  bind_rows(delta_dataset %>% 
+              ungroup() %>% 
+              group_by(species) %>% 
+              summarize(slope = sens.slope(delta_fw_roll)$estimates[1], 
+                        p = sens.slope(delta_fw_roll)$p.value) %>% 
+              mutate(plot = "Freshwater"), 
+            delta_dataset %>% 
+              ungroup() %>% 
+              group_by(species) %>% 
+              summarize(slope = sens.slope(delta_sw_roll)$estimates[1], 
+                        p = sens.slope(delta_sw_roll)$p.value) %>% 
+              mutate(plot = "Saltwater"))
+}
+
+slopes_table(deltas)
+sapflux_slopes_roll <- slopes_table(deltas_weather)
+
 
 write_csv(sapflux_slopes_roll, 
-          "../data/250502_sapflux_slopes_roll.csv")
+          "data/250813_sapflux_slopes_roll.csv")
+
+
+
+
+
+
 
 
