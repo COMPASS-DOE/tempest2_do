@@ -206,6 +206,16 @@ swap %>%
   labs(x = "Depth (cm)", y = "Percent", fill = "")
 ggsave("figures/supplemental/S3_eh_categories.png", width = 5, height = 4)
 
+## Stats
+swap %>% 
+  filter(datetime >= flood1 &
+           datetime <= flood1 + days(5)) %>%
+  group_by(plot, depth, eh_cat) %>% 
+  summarize(n_eh_cat = n()) %>% 
+  ungroup() %>% 
+  group_by(plot, depth) %>% 
+  mutate(perc = (n_eh_cat / sum(n_eh_cat)) * 100)
+
 
 ################################################################################
 
@@ -238,6 +248,8 @@ plot_veg <- function(var, y_label){
     labs(x = "", y = y_label) + 
     scale_fill_manual(values = anyas_colors)
 }
+
+veg %>% group_by(plot) %>% summarize(mean(a, na.rm = T))
 
 plot_grid(plot_veg(a, "Photosynthesis rate (umol/m2/min)"), 
                         plot_veg(gs, "Stomatal conductance (mol/m2/min)"), 
