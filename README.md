@@ -1,5 +1,3 @@
 # tempest2_do
 
-# THIS REPO UNSYNCED LOCALLY AND IT WILL BE QUICKER TO ARCHIVE THIS AND CREATE A NEW ONE. PLEASE DO NOT USE THIS REPO!
-
-Soil DO and redox data from TEMPEST 2
+Data, scripts, and figures used in "Short-term experimental flooding impacts soil biogeochemistry but not aboveground vegetation in a coastal forest" by Regier and co-authors, published in 2025 in PNAS.
