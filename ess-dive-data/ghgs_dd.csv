@@ -1,0 +1,4 @@
+column_or_row_name,Unit,Definition,column_or_row_long_name,Type,Data_Type,Instrument_ifapplicable
+plot,NA,"Date and time of measurement, EST",,Column header,text,
+condition,NA,,,Column header,text,
+co2,µmol_m2_s,Soil surface CO2 flux to the atmosphere,,Column header,numeric,

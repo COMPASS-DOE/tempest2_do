@@ -1,0 +1,3 @@
+column_or_row_name,Unit,Definition,column_or_row_long_name,Type,Data_Type,Instrument_ifapplicable
+plot,NA,"TEMPEST plot identifier (Control, Freshwater, or Saltwater)",,Column header,text,NA
+k,,,,Column header,numeric,NA

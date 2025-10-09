@@ -1,0 +1,16 @@
+File_Name,File_Description,Standard,Start_Date,End_Date,Missing_Value_Codes,Header_Orientation
+belowground_conductance_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+belowground_conductance.csv,,,-9999,-9999,NA; -9999,Horizontal
+firesting_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+firesting.csv,,,2023-06-05,2023-06-11,NA; -9999,Horizontal
+flmd.csv,File-level metadata associated with dataset,ESS-DIVE FLMD v1,-9999,-9999,NA; -9999,Horizontal
+ghgs_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+ghgs.csv,,,-9999,-9999,NA; -9999,Horizontal
+leaf_stress_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+leaf_stress.csv,,,2023-06-13,2023-06-13,NA; -9999,Horizontal
+sapflux_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+sapflux.csv,,,2023-01-01,2023-12-31,NA; -9999,Horizontal
+swap_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+swap.csv,,,2023-06-05,2023-06-11,NA; -9999,Horizontal
+teros_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+teros.csv,,,2023-06-02,2023-06-11,NA; -9999,Horizontal

@@ -1,0 +1,8 @@
+column_or_row_name,Unit,Definition,column_or_row_long_name,Type,Data_Type,Instrument_ifapplicable
+date,NA,Date of collection,,Column header,date,
+plot,NA,"TEMPEST plot identifier (Control, Freshwater, or Saltwater)",,Column header,text,
+plot_id,NA,"Abbreviated plot identifier (C, F, S)",,Column header,time,
+collection_time,NA,"Time of collection, EST",,Column header,numeric,
+a,,,,Column header,numeric,
+gs,,,,Column header,numeric,
+ci,,,,Column header,numeric,

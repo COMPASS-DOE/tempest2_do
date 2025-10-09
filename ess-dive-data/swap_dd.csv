@@ -1,0 +1,5 @@
+column_or_row_name,Unit,Definition,column_or_row_long_name,Type,Data_Type,Instrument_ifapplicable
+datetime_est,NA,"Date and time of measurement, EST",,Column header,date,
+plot,NA,"TEMPEST plot identifier (Control, Freshwater, or Saltwater)",,Column header,text,
+depth_cm,cm,Depth of measurement below soil surface,,Column header,numeric,
+eh_mv,,,,Column header,numeric,
