@@ -88,6 +88,8 @@ ghgs <- bind_rows(soil_ghg_flux %>%
          unit = "ppm")) %>% 
   mutate(plot = ifelse(plot == "Estuarine", "Saltwater", plot))
 
+write_csv(ghgs, "data/250324_final_ghgs.csv")
+
 
 make_boxplot <- function(selected_measurement, selected_type, plot_title, y_lab, vert_just, y_scale){
   

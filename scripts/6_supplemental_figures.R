@@ -321,6 +321,8 @@ bgc <- inner_join(sapflow_trim,
   mutate(k = F_avg / Ypd_Ymd) #%>% 
 # filter(k > -4)
 
+write_csv(bgc, "data/250723_belowground_conductance.csv")
+
 ggplot(bgc, aes(plot, k, fill = plot)) + 
   geom_boxplot(alpha = 0.7, show.legend = F) + 
   stat_compare_means(comparisons = list(c("Control", "Freshwater"), 
