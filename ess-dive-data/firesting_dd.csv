@@ -1,5 +1,5 @@
 column_or_row_name,Unit,Definition,column_or_row_long_name,Type,Data_Type,Instrument_ifapplicable
-datetime_est,NA,"Date and time of measurement, EST",,Column header,dateTime,
-do_percent_sat,,,,Column header,numeric,
-depth,cm,Depth of measurement below soil surface,,Column header,numeric,
+datetime_est,NA,"Date and time of measurement, EST",,Column header,dateTime,Firesting
+do_percent_sat,Percent,Dissolved oxygen measured as a percent saturation,,Column header,numeric,Firesting
+depth,cm,Depth of measurement below soil surface,,Column header,numeric,NA
 plot,NA,"TEMPEST plot identifier (Control, Freshwater, or Saltwater)",,Column header,text,NA

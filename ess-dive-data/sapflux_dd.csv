@@ -3,5 +3,5 @@ plot,NA,"TEMPEST plot identifier (Control, Freshwater, or Saltwater)",,Column he
 species,NA,Tree species,,Column header,text,
 doy,NA,Day of year of sampling,,Column header,numeric,
 year,NA,Year of sampling,,Column header,numeric,
-f_avg_hr,,,,Column header,numeric,
-f_roll_hr,,,,Column header,numeric,
+f_avg_hr,cm3 hr-1,Sapflux,,Column header,numeric,
+f_roll_hr,cm3 hr-1,10-day rolling mean of sapflux,,Column header,numeric,
