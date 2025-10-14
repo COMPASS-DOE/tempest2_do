@@ -1,0 +1,16 @@
+File_Name,File_Description,Standard,Start_Date,End_Date,Missing_Value_Codes,Header_Orientation
+belowground_conductance_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+belowground_conductance.csv,Data for belowground conductance measurements,,-9999,-9999,NA; -9999,Horizontal
+firesting_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+firesting.csv,Data collected by Firesting optical sensors of dissolved oxygen,,6/5/23,6/11/23,NA; -9999,Horizontal
+flmd.csv,File-level metadata associated with dataset,ESS-DIVE FLMD v1,-9999,-9999,NA; -9999,Horizontal
+ghgs_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+ghgs.csv,Data collected for carbon dioxide concentrations and fluxes in soils and tree stems,,-9999,-9999,NA; -9999,Horizontal
+leaf_stress_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+leaf_stress.csv,Data collected for leaf stress metrics,,6/13/23,6/13/23,NA; -9999,Horizontal
+sapflux_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+sapflux.csv,Data collected for tree sapfluxes,,1/1/23,12/31/23,NA; -9999,Horizontal
+swap_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+swap.csv,Data collected by SWAP sensors of soil reduction-oxidation potentials,,6/5/23,6/11/23,NA; -9999,Horizontal
+teros_dd.csv,Data dictionary defining column headers and other terms,,-9999,-9999,NA; -9999,Horizontal
+teros.csv,Data collected by TEROS sensors of soil volumetric moisture and electrical conductivity,,6/2/23,6/11/23,NA; -9999,Horizontal
